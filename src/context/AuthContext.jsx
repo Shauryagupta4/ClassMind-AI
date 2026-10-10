@@ -125,8 +125,10 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.warn("Firebase Phone Auth error:", err);
       // If project hits Firebase daily limit or SMS quota, provide smart fallback so presentation doesn't break
-      if (err.code === 'auth/quota-exceeded' || err.message?.includes('quota') || err.message?.includes('daily')) {
-        toast.error("Firebase daily 10-SMS limit reached. Switching to Simulated Gateway mode (Code: 123456).", { duration: 7000 });
+      if (err.code === 'auth/billing-not-enabled' || err.message?.includes('billing')) {
+        toast.error("Firebase requires a billing card for real SMS to non-test numbers. Use your Test Number in Firebase (Code: 123456) or Email OTP!", { duration: 8000 });
+      } else if (err.code === 'auth/quota-exceeded' || err.message?.includes('quota') || err.message?.includes('daily')) {
+        toast.error("Firebase daily SMS limit reached. Demo test code 123456 ready to test.", { duration: 7000 });
       } else {
         toast.error(err.message || "Failed to send SMS via Firebase.");
       }
