@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, ListChecks, Brain, Sparkles, FileText, ArrowLeft, Layers } from 'lucide-react';
+import { BookOpen, ListChecks, Brain, Sparkles, FileText, ArrowLeft, Layers, CheckCircle2 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { generateQuiz, generateFlashcards } from '../lib/ai';
 import QuizModal from './QuizModal';
@@ -10,7 +10,7 @@ import TeacherIntentRadar from './TeacherIntentRadar';
 import { generateLecturePDF } from '../lib/pdfGenerator';
 import toast from 'react-hot-toast';
 
-const Dashboard = ({ data, onReset }) => {
+const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
   const { theme, styles } = useTheme();
   const currentStyles = styles[theme] || styles.pastelBrutal;
 
@@ -60,6 +60,9 @@ const Dashboard = ({ data, onReset }) => {
       try {
         const generated = await generateFlashcards(data);
         setFlashcardsData(generated);
+        if (onLectureUpdated) {
+          onLectureUpdated({ ...data, cachedFlashcards: generated });
+        }
       } catch (err) {
         console.error("Flashcards generation error:", err);
       } finally {
@@ -73,6 +76,9 @@ const Dashboard = ({ data, onReset }) => {
     try {
       const regenerated = await generateFlashcards({ ...data, cachedFlashcards: null });
       setFlashcardsData(regenerated);
+      if (onLectureUpdated) {
+        onLectureUpdated({ ...data, cachedFlashcards: regenerated });
+      }
     } catch (err) {
       console.error("Flashcards retry error:", err);
     } finally {
@@ -105,9 +111,15 @@ const Dashboard = ({ data, onReset }) => {
           <h2 className={`text-4xl md:text-5xl font-black ${currentStyles.textPrimary} tracking-tight mb-2`}>
             {data.title}
           </h2>
-          <span className={`px-3 py-1 ${currentStyles.badgeClass} border rounded-full text-xs font-bold uppercase tracking-wider`}>
-            {data.subject || 'General Studies'}
-          </span>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <span className={`px-3 py-1 ${currentStyles.badgeClass} border rounded-full text-xs font-bold uppercase tracking-wider`}>
+              {data.subject || 'General Studies'}
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#C7E9DE] border-2 border-black rounded-full text-xs font-mono font-black text-black shadow-[2px_2px_0px_#000]">
+              <CheckCircle2 className="w-3.5 h-3.5 text-black" />
+              <span>SYNCED TO SUPABASE</span>
+            </span>
+          </div>
         </div>
         
         {/* Navigation Action */}
@@ -280,6 +292,9 @@ const Dashboard = ({ data, onReset }) => {
           try {
             const res = await generateQuiz(data, preferences);
             setQuizData(res);
+            if (onLectureUpdated) {
+              onLectureUpdated({ ...data, cachedQuiz: res });
+            }
             return res;
           } catch (err) {
             console.error("Custom quiz generation error:", err);

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { BrainCircuit, CheckCircle2, Loader2, Sparkles, FileAudio, Video, Globe, ArrowRight } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
-const ProcessingState = ({ sourceInfo, isReady, onComplete, onCancel }) => {
+const ProcessingState = ({ sourceInfo, isReady, data, onComplete, onCancel }) => {
   const { theme, styles } = useTheme();
   const currentStyles = styles[theme] || styles.pastelBrutal;
 
@@ -81,14 +81,14 @@ const ProcessingState = ({ sourceInfo, isReady, onComplete, onCancel }) => {
       const finishTimer = setTimeout(() => {
         setCompletedSteps([0, 1, 2, 3]);
         const exitTimer = setTimeout(() => {
-          if (onComplete) onComplete();
+          if (onComplete) onComplete(data);
         }, 500);
         return () => clearTimeout(exitTimer);
       }, 400);
 
       return () => clearTimeout(finishTimer);
     }
-  }, [activeStep, isReady, onComplete]);
+  }, [activeStep, isReady, data, onComplete]);
 
   const progressPercent = Math.min(100, Math.round(((completedSteps.length + 0.3) / steps.length) * 100));
 

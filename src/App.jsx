@@ -156,8 +156,18 @@ function App() {
         content = `Lecture file: ${file.name}\nPlease analyze and generate comprehensive revision notes, structured headings, and active-recall key terms based on this lecture topic: ${file.name.replace(/\.[^/.]+$/, "")}.`;
       }
       const result = await processLecture(content);
+      const lectureId = `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      result.id = lectureId;
       setDashboardData(result);
       setIsProcessingReady(true);
+
+      // Immediately persist to Supabase for the authenticated user
+      saveLecture(result, user).then(() => {
+        console.log("✅ Lecture successfully saved to Supabase:", result.title);
+        getUserLectures(user).then(list => setSavedCount(list?.length || 0));
+      }).catch(err => {
+        console.error("❌ Supabase save error:", err);
+      });
     } catch (error) {
       console.error(error);
       toast.error(`Error: ${error.message || "Processing Failed"}`);
@@ -176,8 +186,18 @@ function App() {
     setAppState('processing');
     try {
       const result = await processLecture(transcriptText);
+      const lectureId = `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      result.id = lectureId;
       setDashboardData(result);
       setIsProcessingReady(true);
+
+      // Immediately persist to Supabase for the authenticated user
+      saveLecture(result, user).then(() => {
+        console.log("✅ Lecture successfully saved to Supabase:", result.title);
+        getUserLectures(user).then(list => setSavedCount(list?.length || 0));
+      }).catch(err => {
+        console.error("❌ Supabase save error:", err);
+      });
     } catch (error) {
       console.error(error);
       toast.error(`Error: ${error.message || "Processing Failed"}`);
@@ -301,11 +321,13 @@ function App() {
           <ProcessingState 
             sourceInfo={sourceInfo} 
             isReady={isProcessingReady} 
-            onComplete={() => {
+            data={dashboardData}
+            onComplete={(finalData) => {
               setAppState('dashboard');
-              toast.success("Analysis complete!");
-              if (dashboardData) {
-                saveLecture(dashboardData, user).then(() => {
+              toast.success("Analysis complete! Saved to Revision Vault 📚");
+              const toSave = finalData || dashboardData;
+              if (toSave) {
+                saveLecture(toSave, user).then(() => {
                   getUserLectures(user).then(list => setSavedCount(list?.length || 0));
                 });
               }
@@ -318,7 +340,15 @@ function App() {
           />
         )}
         {appState === 'dashboard' && dashboardData && (
-          <Dashboard data={dashboardData} onReset={() => setAppState('upload')} />
+          <Dashboard 
+            data={dashboardData} 
+            user={user}
+            onReset={() => setAppState('upload')} 
+            onLectureUpdated={(updated) => {
+              setDashboardData(updated);
+              saveLecture(updated, user);
+            }}
+          />
         )}
       </div>
     </div>

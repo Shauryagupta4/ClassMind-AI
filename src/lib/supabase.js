@@ -100,14 +100,26 @@ export async function saveLecture(lectureData, user = null) {
   if (!lectureData || !lectureData.title) return null;
 
   const lectureId = lectureData.id || `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  lectureData.id = lectureId;
   const now = new Date().toISOString();
-  const validUserUuid = user?.id ? ensureValidUuid(user.id) : null;
+
+  // If user wasn't passed directly, resolve from active storage
+  let activeUser = user;
+  if (!activeUser || !activeUser.id) {
+    try {
+      const stored = localStorage.getItem('classmind_active_user') || localStorage.getItem('classmind_demo_user');
+      if (stored) activeUser = JSON.parse(stored);
+    } catch (e) {}
+  }
+
+  const validUserUuid = activeUser?.id ? ensureValidUuid(activeUser.id) : null;
+  const userEmail = activeUser?.email || (activeUser?.phone ? `${activeUser.phone}@classmind.ai` : 'student@classmind.ai');
 
   // Local snapshot object for immediate zero-latency client use
   const localSnapshot = {
     id: lectureId,
     user_id: validUserUuid,
-    user_email: user?.email || 'guest@classmind.ai',
+    user_email: userEmail,
     title: lectureData.title,
     subject: lectureData.subject || 'General Academic',
     summary: lectureData.summary || '',
@@ -121,34 +133,40 @@ export async function saveLecture(lectureData, user = null) {
   };
 
   // Always update user-specific local cache first
-  const localList = getLocalLectures(user).filter(item => item.id !== lectureId);
+  const localList = getLocalLectures(activeUser).filter(item => item.id !== lectureId);
   localList.unshift(localSnapshot);
-  setLocalLectures(localList.slice(0, 30), user);
+  setLocalLectures(localList.slice(0, 30), activeUser);
 
-  // Sync to normalized relational Supabase tables
+  // Sync to normalized relational Supabase tables + core table
   try {
-    // Table 1: lectures (Core Metadata)
+    // Table 1: lectures (Core Metadata + JSON documents for instant indexing)
     const { error: lectureError } = await supabase
       .from('lectures')
       .upsert({
         id: lectureId,
         user_id: validUserUuid,
+        user_email: userEmail,
         title: localSnapshot.title,
         subject: localSnapshot.subject,
         summary: localSnapshot.summary,
         exam_readiness_score: localSnapshot.exam_readiness_score,
+        teacher_intent: localSnapshot.teacher_intent,
+        sections: localSnapshot.sections,
+        key_terms: localSnapshot.key_terms,
+        cached_quiz: localSnapshot.cached_quiz,
+        cached_flashcards: localSnapshot.cached_flashcards,
         created_at: now
       });
 
     if (lectureError) {
-      console.warn("Table 'lectures' sync notice:", lectureError.message);
+      console.error("❌ Supabase table 'lectures' upsert error:", lectureError.message);
       return localSnapshot;
     }
-    console.log("✅ Lecture successfully stored in Supabase 'lectures' table:", lectureId);
+    console.log("✅ Lecture successfully stored in Supabase 'lectures' table:", lectureId, "User:", validUserUuid);
 
     // Table 2: teacher_intents (Pedagogical Tone & Exam Probables)
     if (lectureData.teacherIntent) {
-      await supabase
+      const { error: intentError } = await supabase
         .from('teacher_intents')
         .upsert({
           id: `intent_${lectureId}`,
@@ -159,8 +177,8 @@ export async function saveLecture(lectureData, user = null) {
           warning_traps: lectureData.teacherIntent.warningTraps || [],
           low_priority_topics: lectureData.teacherIntent.lowPriorityTopics || [],
           created_at: now
-        })
-        .catch(() => {});
+        });
+      if (intentError) console.warn("Supabase teacher_intents notice:", intentError.message);
     }
 
     // Table 3: lecture_sections (Structured Notes)
@@ -170,40 +188,41 @@ export async function saveLecture(lectureData, user = null) {
         lecture_id: lectureId,
         heading: s.heading || `Section ${idx + 1}`,
         summary: s.summary || '',
-        detailed_notes: s.notes || s.detailed_notes || '',
+        detailed_notes: s.notes || s.detailed_notes || (Array.isArray(s.points) ? s.points.join('\n') : ''),
         section_order: idx + 1,
         created_at: now
       }));
-      await supabase.from('lecture_sections').upsert(sectionRows).catch(() => {});
+      const { error: secError } = await supabase.from('lecture_sections').upsert(sectionRows);
+      if (secError) console.warn("Supabase lecture_sections notice:", secError.message);
     }
 
     // Table 4: quizzes (Active Recall Studio)
     if (lectureData.cachedQuiz) {
-      await supabase
+      const { error: quizError } = await supabase
         .from('quizzes')
         .upsert({
           id: `quiz_${lectureId}`,
           lecture_id: lectureId,
           questions: lectureData.cachedQuiz.questions || lectureData.cachedQuiz,
           created_at: now
-        })
-        .catch(() => {});
+        });
+      if (quizError) console.warn("Supabase quizzes notice:", quizError.message);
     }
 
     // Table 5: flashcards (Cognitive Flashcard Decks)
     if (lectureData.cachedFlashcards) {
-      await supabase
+      const { error: fcError } = await supabase
         .from('flashcards')
         .upsert({
           id: `fc_${lectureId}`,
           lecture_id: lectureId,
           cards: lectureData.cachedFlashcards.flashcards || lectureData.cachedFlashcards,
           created_at: now
-        })
-        .catch(() => {});
+        });
+      if (fcError) console.warn("Supabase flashcards notice:", fcError.message);
     }
   } catch (err) {
-    console.warn('Relational sync notice:', err.message);
+    console.error('Relational sync notice:', err.message);
   }
 
   return localSnapshot;
@@ -213,13 +232,21 @@ export async function saveLecture(lectureData, user = null) {
  * Retrieves all saved lectures by querying relational tables (with fallback)
  */
 export async function getUserLectures(user = null) {
-  // If not logged in, Revision Vault is strictly empty (0 lectures)
-  if (!user || !user.id) {
+  // If not logged in, resolve from active storage or return empty
+  let activeUser = user;
+  if (!activeUser || !activeUser.id) {
+    try {
+      const stored = localStorage.getItem('classmind_active_user') || localStorage.getItem('classmind_demo_user');
+      if (stored) activeUser = JSON.parse(stored);
+    } catch (e) {}
+  }
+
+  if (!activeUser || !activeUser.id) {
     return [];
   }
 
-  const validUuid = ensureValidUuid(user.id);
-  const localList = getLocalLectures(user);
+  const validUuid = ensureValidUuid(activeUser.id);
+  const localList = getLocalLectures(activeUser);
 
   try {
     const { data, error } = await supabase
@@ -234,20 +261,31 @@ export async function getUserLectures(user = null) {
       .eq('user_id', validUuid)
       .order('created_at', { ascending: false })
       .limit(30);
+
+    if (error) {
+      console.warn("Supabase getUserLectures query notice:", error.message);
+    }
+
     if (!error && Array.isArray(data) && data.length > 0) {
       // Format relational rows into Dashboard-ready lecture objects
       const cloudFormatted = data.map(item => {
-        const intentRow = Array.isArray(item.teacher_intents) ? item.teacher_intents[0] : item.teacher_intents;
-        const quizRow = Array.isArray(item.quizzes) ? item.quizzes[0] : item.quizzes;
-        const fcRow = Array.isArray(item.flashcards) ? item.flashcards[0] : item.flashcards;
+        const intentRow = Array.isArray(item.teacher_intents) && item.teacher_intents.length > 0
+          ? item.teacher_intents[0] 
+          : (item.teacher_intent || null);
+        const quizRow = Array.isArray(item.quizzes) && item.quizzes.length > 0 
+          ? item.quizzes[0] 
+          : (item.cached_quiz || null);
+        const fcRow = Array.isArray(item.flashcards) && item.flashcards.length > 0 
+          ? item.flashcards[0] 
+          : (item.cached_flashcards || null);
 
-        const sortedSections = Array.isArray(item.lecture_sections) 
+        const sortedSections = Array.isArray(item.lecture_sections) && item.lecture_sections.length > 0
           ? [...item.lecture_sections].sort((a, b) => (a.section_order || 0) - (b.section_order || 0)).map(s => ({
               heading: s.heading,
               summary: s.summary,
               notes: s.detailed_notes
             }))
-          : [];
+          : (Array.isArray(item.sections) ? item.sections : []);
 
         return {
           id: item.id,
@@ -255,17 +293,17 @@ export async function getUserLectures(user = null) {
           subject: item.subject,
           summary: item.summary,
           exam_readiness_score: item.exam_readiness_score,
-          teacher_intent: intentRow ? {
+          teacher_intent: intentRow?.overall_tone ? {
             overallTone: intentRow.overall_tone,
             examReadinessScore: intentRow.exam_readiness_score,
             highYieldTopics: intentRow.high_yield_topics,
             warningTraps: intentRow.warning_traps,
             lowPriorityTopics: intentRow.low_priority_topics
-          } : null,
+          } : (item.teacher_intent || null),
           sections: sortedSections,
-          key_terms: [],
-          cached_quiz: quizRow?.questions ? { questions: quizRow.questions } : null,
-          cached_flashcards: fcRow?.cards ? { flashcards: fcRow.cards } : null,
+          key_terms: item.key_terms || [],
+          cached_quiz: quizRow?.questions ? { questions: quizRow.questions } : (item.cached_quiz || null),
+          cached_flashcards: fcRow?.cards ? { flashcards: fcRow.cards } : (item.cached_flashcards || null),
           created_at: item.created_at
         };
       });
@@ -279,7 +317,7 @@ export async function getUserLectures(user = null) {
       return Array.from(map.values());
     }
   } catch (err) {
-    // If relational query has schema mismatch or table doesn't exist, local storage handles it
+    console.warn("getUserLectures query error, falling back to local list:", err);
   }
 
   return localList;
