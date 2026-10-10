@@ -5,7 +5,8 @@ const QUIZ_KEY = import.meta.env.VITE_GROQ_QUIZ_KEY || import.meta.env.VITE_GROQ
 const FLASHCARDS_KEY = import.meta.env.VITE_GROQ_FLASHCARDS_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
 const WHISPER_KEY = import.meta.env.VITE_GROQ_WHISPER_KEY || import.meta.env.VITE_GROQ_SUMMARY_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
 
-const MODEL = import.meta.env.VITE_GROQ_MODEL || "qwen/qwen3.8-27b";
+const RAW_MODEL = import.meta.env.VITE_GROQ_MODEL || "qwen/qwen3.8-27b";
+const MODEL = (!RAW_MODEL || RAW_MODEL.includes("llama")) ? "qwen/qwen3.8-27b" : RAW_MODEL;
 
 /**
  * Universal Groq Chat Completion caller with resilient model failover
@@ -16,11 +17,18 @@ async function callGroq(prompt, apiKey, options = {}) {
     throw new Error("Missing Groq API Key! Please add VITE_GROQ_API_KEY in your Vercel Project Settings > Environment Variables, then Redeploy.");
   }
 
-  const primaryModel = options.model || MODEL;
-  const modelsToTry = [...new Set([primaryModel, "llama-3.3-70b-versatile", "llama-3.1-8b-instant"])];
+  let effectivePrimary = options.model || MODEL;
+  if (!effectivePrimary || effectivePrimary.includes("llama")) {
+    effectivePrimary = "qwen/qwen3.8-27b";
+  }
 
+  // Active, verified Groq models supported by the API
+  const modelsToTry = [...new Set([effectivePrimary, "openai/gpt-oss-120b", "openai/gpt-oss-20b"])];
+
+  let primaryError = null;
   let lastError = null;
-  for (const model of modelsToTry) {
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
     try {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -41,11 +49,12 @@ async function callGroq(prompt, apiKey, options = {}) {
       }
       return JSON.parse(data.choices[0].message.content);
     } catch (err) {
+      if (i === 0) primaryError = err;
       lastError = err;
       console.warn(`Groq request with ${model} failed, trying failover:`, err.message);
     }
   }
-  throw lastError || new Error("All Groq models encountered errors.");
+  throw primaryError || lastError || new Error("All Groq models encountered errors.");
 }
 
 /**

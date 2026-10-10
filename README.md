@@ -30,7 +30,7 @@
   - **Worker 3 (Quiz Key)**: Active recall quiz generation with custom parameters.
   - **Worker 4 (Flashcards Key)**: Cognitive active-recall 3D flashcard generation.
   - **Worker 5 (Whisper Key)**: High-speed speech-to-text with multilingual Indian classroom support (Hindi, Hinglish, English).
-- Automatic model failover (`Qwen 2.5` ➔ `Llama 3.3 70B` ➔ `Llama 3.1 8B`) ensures zero downtime during peak capacity.
+- Automatic model failover (`Qwen 3.8 27B` ➔ `GPT-OSS 120B` ➔ `GPT-OSS 20B`) ensures zero downtime during peak capacity.
 
 ### 3. 📝 Active Recall Quiz Studio
 - Fully customizable quiz generation:
