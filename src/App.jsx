@@ -71,13 +71,89 @@ function App() {
   const currentStyles = styles[theme] || styles.pastelBrutal;
   const { user } = useAuth();
   
-  const [appState, setAppState] = useState('upload'); // 'upload' | 'processing' | 'dashboard'
-  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardData, setDashboardData] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('classmind_active_lecture');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [appState, setAppState] = useState(() => {
+    try {
+      const savedState = sessionStorage.getItem('classmind_app_state');
+      const savedLecture = sessionStorage.getItem('classmind_active_lecture');
+      if (savedState === 'dashboard' && savedLecture) {
+        return 'dashboard';
+      }
+    } catch {}
+    return 'upload';
+  });
+
   const [sourceInfo, setSourceInfo] = useState({ type: 'file', name: 'Lecture' });
   const [isProcessingReady, setIsProcessingReady] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
+
+  // Helper to cleanly reset back to home and wipe cached view
+  const resetToHome = () => {
+    setAppState('upload');
+    setDashboardData(null);
+    try {
+      sessionStorage.removeItem('classmind_active_lecture');
+      sessionStorage.setItem('classmind_app_state', 'upload');
+      sessionStorage.removeItem('classmind_scroll_y');
+    } catch (e) {}
+  };
+
+  // If user logs out while on dashboard/resources, immediately return to home upload screen
+  useEffect(() => {
+    if (!user && appState === 'dashboard') {
+      resetToHome();
+    }
+  }, [user]);
+
+  // Sync active lecture and view state to sessionStorage so page refresh stays on the current view
+  useEffect(() => {
+    try {
+      if (appState === 'dashboard' && dashboardData) {
+        sessionStorage.setItem('classmind_app_state', 'dashboard');
+        sessionStorage.setItem('classmind_active_lecture', JSON.stringify(dashboardData));
+      } else if (appState === 'upload') {
+        sessionStorage.setItem('classmind_app_state', 'upload');
+        sessionStorage.removeItem('classmind_active_lecture');
+      }
+    } catch (e) {
+      console.warn('Failed to sync session state:', e);
+    }
+  }, [appState, dashboardData]);
+
+  // Track and restore scroll position so refreshing while reading notes/resources keeps exact position
+  useEffect(() => {
+    const handleScroll = () => {
+      if (appState === 'dashboard') {
+        sessionStorage.setItem('classmind_scroll_y', String(window.scrollY));
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [appState]);
+
+  useEffect(() => {
+    if (appState === 'dashboard') {
+      const savedY = sessionStorage.getItem('classmind_scroll_y');
+      if (savedY) {
+        const y = parseInt(savedY, 10);
+        if (!isNaN(y) && y > 0) {
+          setTimeout(() => {
+            window.scrollTo({ top: y, behavior: 'instant' });
+          }, 150);
+        }
+      }
+    }
+  }, [appState]);
 
   // Sync count of saved lectures from Supabase / Local storage
   useEffect(() => {
@@ -230,7 +306,7 @@ function App() {
       <Navbar 
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onOpenHistory={() => setIsHistoryModalOpen(true)}
-        onResetHome={() => setAppState('upload')}
+        onResetHome={resetToHome}
         savedCount={savedCount}
       />
 
@@ -339,7 +415,7 @@ function App() {
             }}
             onCancel={() => {
               toast.dismiss('transcribe');
-              setAppState('upload');
+              resetToHome();
               toast('Processing cancelled', { icon: '↩️' });
             }}
           />
@@ -348,7 +424,7 @@ function App() {
           <Dashboard 
             data={dashboardData} 
             user={user}
-            onReset={() => setAppState('upload')} 
+            onReset={resetToHome} 
             onLectureUpdated={(updated) => {
               setDashboardData(updated);
               saveLecture(updated, user);

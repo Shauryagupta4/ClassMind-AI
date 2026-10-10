@@ -76,6 +76,7 @@ export default function Navbar({ onOpenAuth, onOpenHistory, onResetHome, savedCo
                   <button
                     onClick={() => {
                       setMenuOpen(false);
+                      onResetHome?.();
                       signOut();
                     }}
                     className="w-full px-3 py-2 text-left text-xs font-bold text-red-600 hover:bg-[#FFCCD5] rounded-xl flex items-center gap-2 cursor-pointer"
