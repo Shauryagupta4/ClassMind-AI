@@ -82,7 +82,6 @@ export const AuthProvider = ({ children }) => {
 
   const signInWithGoogle = async () => {
     try {
-      // 1. Try Firebase Google Popup (Instant popup without page redirect)
       const fbUser = await signInWithFirebaseGoogle();
       if (fbUser) {
         const userObj = {
@@ -99,26 +98,21 @@ export const AuthProvider = ({ children }) => {
         return userObj;
       }
     } catch (fbErr) {
-      console.warn("Firebase Google Auth:", fbErr.message);
-      // If user cancelled popup, return cleanly
+      console.error("Firebase Google Auth Error:", fbErr);
       if (fbErr.code === 'auth/popup-closed-by-user') {
+        toast('Google sign-in popup was closed.', { icon: 'ℹ️' });
         return null;
       }
-      
-      // 2. Fallback to Supabase OAuth redirect if Firebase provider isn't activated
-      try {
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: window.location.origin
-          }
-        });
-        if (error) throw error;
-        return data;
-      } catch (sbErr) {
-        toast.error(fbErr.message || sbErr.message || 'Google Auth could not be completed');
-        throw sbErr;
+      if (fbErr.code === 'auth/popup-blocked') {
+        toast.error('Browser blocked the Google popup window. Please allow popups for localhost!');
+        return null;
       }
+      if (fbErr.code === 'auth/configuration-not-found' || fbErr.code === 'auth/operation-not-allowed') {
+        toast.error('Google provider is not enabled in your Firebase Console! Please enable Google under Authentication -> Sign-in method.', { duration: 8000 });
+        return null;
+      }
+      toast.error(fbErr.message || 'Google Auth failed');
+      throw fbErr;
     }
   };
 
