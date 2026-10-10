@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, syncUserProfile } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext({});
@@ -13,7 +13,11 @@ export const AuthProvider = ({ children }) => {
     // 1. Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user || getDemoUser());
+      const activeUser = session?.user || getDemoUser();
+      setUser(activeUser);
+      if (session?.user) {
+        syncUserProfile(session.user);
+      }
       setLoading(false);
     });
 
@@ -22,6 +26,7 @@ export const AuthProvider = ({ children }) => {
       setSession(session);
       if (session?.user) {
         setUser(session.user);
+        syncUserProfile(session.user);
         localStorage.removeItem('classmind_demo_user');
       } else {
         setUser(getDemoUser());
