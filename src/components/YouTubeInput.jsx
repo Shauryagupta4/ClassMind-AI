@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, Video, Globe, Sparkles, Languages } from 'lucide-react';
+import { Loader2, Video, Globe, Sparkles, Languages, AlertTriangle } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { fetchWebContent } from '../lib/tinyfish';
 
@@ -12,12 +12,25 @@ const YouTubeInput = ({ onTranscriptReady }) => {
   const [langPreference, setLangPreference] = useState('auto'); // 'auto' | 'hi' | 'en'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [disabledCaptionMeta, setDisabledCaptionMeta] = useState(null);
+
+  const handleSynthesizeFromTopic = (topicName) => {
+    if (onTranscriptReady) {
+      const promptText = `Educational and Technical Subject: ${topicName}\n\nPlease generate a master academic synthesis including structured revision notes, foundational principles, teacher's intent exam radar, and active-recall key terms based on this subject.`;
+      onTranscriptReady(promptText, {
+        type: 'youtube',
+        name: topicName,
+        language: langPreference
+      });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!url) return;
     setLoading(true);
     setError(null);
+    setDisabledCaptionMeta(null);
 
     try {
       if (mode === 'youtube') {
@@ -32,8 +45,12 @@ const YouTubeInput = ({ onTranscriptReady }) => {
         });
         
         if (!resp.ok) {
-          const err = await resp.json();
-          throw new Error(err.error || 'Failed to fetch transcript. Video might not have subtitles.');
+          const errData = await resp.json();
+          if (errData.disabledCaptions) {
+            setDisabledCaptionMeta(errData);
+            return;
+          }
+          throw new Error(errData.error || 'Failed to fetch transcript. Video might not have subtitles.');
         }
         
         const { transcript, language } = await resp.json();
@@ -157,6 +174,36 @@ const YouTubeInput = ({ onTranscriptReady }) => {
           </button>
         </div>
         {error && <p className="mt-2 text-xs text-red-500 text-center font-medium">{error}</p>}
+
+        {disabledCaptionMeta && (
+          <div className="mt-4 p-4 rounded-2xl bg-amber-50 border-3 border-black shadow-[4px_4px_0px_#000] text-left">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h4 className="text-xs font-mono font-black text-amber-950 uppercase tracking-wide">
+                  Subtitles / Captions Disabled by Creator
+                </h4>
+                <p className="text-xs font-bold text-amber-900 mt-1 leading-snug">
+                  The creator of <b>"{disabledCaptionMeta.videoTitle || 'this video'}"</b> did not enable subtitles/captions on YouTube.
+                </p>
+                
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSynthesizeFromTopic(disabledCaptionMeta.videoTitle || url)}
+                    className="px-3.5 py-2 rounded-xl border-2 border-black bg-[#FFCCD5] hover:bg-[#ffb6c4] text-xs font-black text-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>✨ Generate Master Notes on this Topic Anyway →</span>
+                  </button>
+                </div>
+                
+                <p className="text-[11px] font-bold text-amber-800 mt-2.5">
+                  💡 Tip: If you have the lecture video or audio (.mp3), upload it to the Dropzone above — Groq Whisper will transcribe the raw sound directly!
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </form>
     </div>
   );

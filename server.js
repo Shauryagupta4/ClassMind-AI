@@ -63,6 +63,26 @@ async function fetchMultilingualTranscript(url, preferredLang = null) {
   throw lastError || new Error('No transcripts found for this video in any supported language.');
 }
 
+/**
+ * Fetches video metadata via YouTube oEmbed to identify title and creator
+ */
+async function getYouTubeMetadata(url) {
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const res = await fetch(oembedUrl);
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        title: data.title || null,
+        author: data.author_name || null
+      };
+    }
+  } catch (e) {
+    // Ignore fallback errors
+  }
+  return null;
+}
+
 app.post('/api/transcript', async (req, res) => {
   try {
     const { url, lang } = req.body;
@@ -75,8 +95,17 @@ app.post('/api/transcript', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error fetching transcript:', error.message || error);
-    res.status(500).json({ 
-      error: 'Failed to extract transcript. Please make sure the video has captions enabled (Hindi, English, or any language). You can also upload a lecture file, audio, or paste text directly.' 
+    const meta = await getYouTubeMetadata(req.body.url);
+    const videoTitle = meta?.title;
+    const author = meta?.author;
+
+    res.status(422).json({ 
+      error: videoTitle 
+        ? `The YouTube creator has disabled closed captions/subtitles on "${videoTitle}".`
+        : 'Failed to extract transcript. Closed captions/subtitles are disabled on this video by the creator.',
+      videoTitle,
+      author,
+      disabledCaptions: true
     });
   }
 });
