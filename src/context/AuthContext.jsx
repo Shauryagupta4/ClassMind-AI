@@ -79,6 +79,95 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const signInWithGoogle = async () => {
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.warn("Google OAuth warning:", err);
+      // If Google OAuth isn't enabled in user's Supabase dashboard yet, offer graceful demo fallback
+      toast.error(err.message || 'Google Auth is initializing. Check Supabase OAuth provider settings.');
+      throw err;
+    }
+  };
+
+  const sendPhoneOtp = async (phone) => {
+    try {
+      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
+      const { data, error } = await supabase.auth.signInWithOtp({
+        phone: formattedPhone
+      });
+      if (error) {
+        // If SMS provider (Twilio/MessageBird) is not configured in Supabase, provide fallback test OTP
+        console.warn("Supabase Phone OTP note:", error.message);
+        if (error.message.includes('SMS provider') || error.message.includes('not configured') || error.message.includes('provider')) {
+          // Generate a local mock OTP for frictionless hackathon demonstration
+          const mockOtp = '123456';
+          sessionStorage.setItem('classmind_mock_phone', formattedPhone);
+          sessionStorage.setItem('classmind_mock_otp', mockOtp);
+          toast.success(`OTP Sent to ${formattedPhone}! (Demo Mode: Use code 123456)`, { duration: 6000 });
+          return { success: true, mock: true, code: mockOtp };
+        }
+        throw error;
+      }
+      toast.success(`6-digit OTP sent to ${formattedPhone}!`);
+      return { success: true, data };
+    } catch (err) {
+      // If Supabase throws error because SMS gateway isn't connected
+      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
+      const mockOtp = '123456';
+      sessionStorage.setItem('classmind_mock_phone', formattedPhone);
+      sessionStorage.setItem('classmind_mock_otp', mockOtp);
+      toast.success(`SMS Gateway Simulated! Enter code 123456 to verify.`, { duration: 6000 });
+      return { success: true, mock: true, code: mockOtp };
+    }
+  };
+
+  const verifyPhoneOtp = async (phone, token) => {
+    try {
+      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
+      const mockPhone = sessionStorage.getItem('classmind_mock_phone');
+      const mockOtp = sessionStorage.getItem('classmind_mock_otp');
+
+      if (mockPhone && token === mockOtp) {
+        const phoneUser = {
+          id: `phone-${formattedPhone.replace(/\D/g, '')}`,
+          phone: formattedPhone,
+          user_metadata: { full_name: `Phone User (${formattedPhone})` }
+        };
+        localStorage.setItem('classmind_demo_user', JSON.stringify(phoneUser));
+        setUser(phoneUser);
+        syncUserProfile(phoneUser);
+        sessionStorage.removeItem('classmind_mock_phone');
+        sessionStorage.removeItem('classmind_mock_otp');
+        toast.success('Phone verified successfully! Logged in.');
+        return { user: phoneUser };
+      }
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: formattedPhone,
+        token,
+        type: 'sms'
+      });
+      if (error) throw error;
+      if (data?.user) {
+        setUser(data.user);
+        syncUserProfile(data.user);
+      }
+      toast.success('Phone verified successfully!');
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Invalid or expired OTP code');
+      throw err;
+    }
+  };
+
   const signInAsDemo = () => {
     const demo = {
       id: 'demo-student-id',
@@ -110,6 +199,9 @@ export const AuthProvider = ({ children }) => {
       loading,
       signUp,
       signIn,
+      signInWithGoogle,
+      sendPhoneOtp,
+      verifyPhoneOtp,
       signInAsDemo,
       signOut
     }}>
