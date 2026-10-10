@@ -65,6 +65,24 @@ function wrapSvgText(text, maxCharsPerLine = 22, maxLines = 2) {
  * - Interactive pan & zoom, collapsible branches, and search
  */
 const MindMapModal = ({ isOpen, onClose, lectureData, mindMapData, loading, onRegenerate }) => {
+  // Prevent background scroll when modal is open, and reliably restore it on close/unmount
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow || '';
+      };
+    }
+  }, [isOpen]);
+
+  // Ensure scroll is restored if unmounting while open
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   const [layoutMode, setLayoutMode] = useState('bidirectional');
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -81,49 +99,18 @@ const MindMapModal = ({ isOpen, onClose, lectureData, mindMapData, loading, onRe
   const containerRef = useRef(null);
   const svgRef = useRef(null);
 
-  // Safely manage background scrolling only while modal is actively open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.removeProperty('overflow');
-    }
-    return () => {
-      document.body.style.removeProperty('overflow');
-    };
-  }, [isOpen]);
-
-  const handleClose = () => {
-    document.body.style.removeProperty('overflow');
-    if (onClose) onClose();
-  };
-
   const rootData = useMemo(() => {
     return mindMapData?.root || null;
   }, [mindMapData]);
 
   // Center the mind map on mount or layout switch
   useEffect(() => {
-    if (isOpen && containerRef.current) {
+    if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       setPan({ x: rect.width / 2, y: rect.height / 2 });
       setZoom(1);
     }
-  }, [isOpen, layoutMode]);
-
-  // Handle Escape key
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        handleClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
-
-  if (!isOpen) return null;
+  }, [layoutMode]);
 
   // Canvas Pan Handlers
   const handleMouseDown = (e) => {
@@ -530,6 +517,9 @@ const MindMapModal = ({ isOpen, onClose, lectureData, mindMapData, loading, onRe
     }
   };
 
+  // If not open, do not render modal
+  if (!isOpen) return null;
+
   // Render modal into document.body to avoid stacking context collisions
   return createPortal(
     <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-sm ${isFullscreen ? 'p-0' : ''}`}>
@@ -650,7 +640,7 @@ const MindMapModal = ({ isOpen, onClose, lectureData, mindMapData, loading, onRe
 
             {/* Close Button */}
             <button 
-              onClick={handleClose}
+              onClick={onClose}
               className="p-1.5 rounded-xl bg-[#FFCCD5] border-2 border-black shadow-[2px_2px_0px_#000] hover:bg-rose-300 hover:rotate-6 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
             >
               <X className="w-4 h-4 text-black" />
