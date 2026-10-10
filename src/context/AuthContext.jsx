@@ -168,6 +168,43 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const sendEmailOtp = async (email) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: true
+        }
+      });
+      if (error) throw error;
+      toast.success(`6-digit code sent to ${email}! Check your inbox.`, { duration: 6000 });
+      return { success: true, data };
+    } catch (err) {
+      toast.error(err.message || 'Failed to send Email OTP');
+      throw err;
+    }
+  };
+
+  const verifyEmailOtp = async (email, token) => {
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: token.trim(),
+        type: 'email'
+      });
+      if (error) throw error;
+      if (data?.user) {
+        setUser(data.user);
+        syncUserProfile(data.user);
+      }
+      toast.success('Email verified successfully! Welcome to ClassMind.');
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Invalid or expired OTP code');
+      throw err;
+    }
+  };
+
   const signInAsDemo = () => {
     const demo = {
       id: 'demo-student-id',
@@ -200,6 +237,8 @@ export const AuthProvider = ({ children }) => {
       signUp,
       signIn,
       signInWithGoogle,
+      sendEmailOtp,
+      verifyEmailOtp,
       sendPhoneOtp,
       verifyPhoneOtp,
       signInAsDemo,
