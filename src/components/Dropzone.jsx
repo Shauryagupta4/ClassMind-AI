@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, FileAudio, FolderOpen, AlertCircle, Lock } from 'lucide-react';
+import { Upload, FileAudio, FolderOpen, AlertCircle, Camera, Image as ImageIcon } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -85,6 +85,8 @@ const Dropzone = ({ onFileDrop, onRequireAuth }) => {
     }
   };
 
+  const isSelectedImage = file?.type?.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif|heic)$/i.test(file?.name || '');
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -96,7 +98,7 @@ const Dropzone = ({ onFileDrop, onRequireAuth }) => {
         type="file" 
         ref={fileInputRef} 
         onChange={handleFileInputChange} 
-        accept="audio/*,video/*,.txt,.md,.srt,.vtt,.pdf" 
+        accept="audio/*,video/*,image/*,.txt,.md,.srt,.vtt,.pdf,.png,.jpg,.jpeg,.webp" 
         className="hidden" 
       />
 
@@ -120,13 +122,17 @@ const Dropzone = ({ onFileDrop, onRequireAuth }) => {
               className="flex flex-col items-center"
             >
               <div className="w-20 h-20 bg-[#FFCCD5] border-4 border-black rounded-3xl shadow-[4px_4px_0px_#000] flex items-center justify-center mb-6">
-                <FileAudio className="w-10 h-10 text-black" />
+                {isSelectedImage ? (
+                  <Camera className="w-10 h-10 text-black animate-pulse" />
+                ) : (
+                  <FileAudio className="w-10 h-10 text-black" />
+                )}
               </div>
               <h3 className={`text-2xl font-black ${currentStyles.textPrimary} tracking-tight mb-2`}>
                 {file.name}
               </h3>
               <p className={`${currentStyles.accent} font-bold uppercase tracking-widest text-sm`}>
-                Ready to Process
+                {isSelectedImage ? '📸 Whiteboard Photo Ready (OCR Vision)' : '⚡ Ready to Process'}
               </p>
             </motion.div>
           ) : (
@@ -157,15 +163,21 @@ const Dropzone = ({ onFileDrop, onRequireAuth }) => {
                 </div>
               )}
 
-              <p className={`${currentStyles.textSecondary} text-base md:text-lg font-medium mb-4 max-w-sm`}>
-                Drag and drop your audio, video, notes, or transcript file here.
+              <p className={`${currentStyles.textSecondary} text-base md:text-lg font-medium mb-4 max-w-md`}>
+                Drag and drop your audio, video, whiteboard photo, handwritten notes, or transcript file here.
               </p>
 
-              {/* Neo-brutalist media size badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl border-2 border-black bg-[#FFF1C5] text-[11px] font-mono font-black text-black shadow-[2px_2px_0px_#000] mb-6">
-                <span>⚡ Media (Audio/Video): Max 25 MB</span>
-                <span>•</span>
-                <span>Text/SRT: No limit</span>
+              {/* Neo-brutalist media format badges */}
+              <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
+                <span className="px-3 py-1 rounded-xl border-2 border-black bg-[#C7E9DE] text-[11px] font-mono font-black text-black shadow-[2px_2px_0px_#000]">
+                  📸 Whiteboard & Notes Photo (OCR Vision)
+                </span>
+                <span className="px-3 py-1 rounded-xl border-2 border-black bg-[#FFF1C5] text-[11px] font-mono font-black text-black shadow-[2px_2px_0px_#000]">
+                  ⚡ Audio / Video (Whisper: 25 MB)
+                </span>
+                <span className="px-3 py-1 rounded-xl border-2 border-black bg-[#FFCCD5] text-[11px] font-mono font-black text-black shadow-[2px_2px_0px_#000]">
+                  📄 Text & SRT (Unlimited)
+                </span>
               </div>
               
               <button 

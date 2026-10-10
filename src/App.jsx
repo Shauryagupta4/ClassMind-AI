@@ -7,6 +7,7 @@ import Navbar from './components/Navbar'
 import AuthModal from './components/AuthModal'
 import SavedLecturesModal from './components/SavedLecturesModal'
 import { processLecture, transcribeAudio } from './lib/ai'
+import { extractTextFromImage } from './lib/ocr'
 import { saveLecture } from './lib/supabase'
 import { useAuth } from './context/AuthContext'
 import toast, { Toaster } from 'react-hot-toast'
@@ -206,6 +207,7 @@ function App() {
     }
 
     // Strict 25 MB limit for audio/video media (Groq Whisper requirement)
+    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif|tiff|heic)$/i.test(file.name);
     const isMedia = file.type.startsWith('audio/') || 
                     file.type.startsWith('video/') || 
                     /\.(mp3|wav|m4a|ogg|aac|flac|mp4|webm|mkv|mov|avi)$/i.test(file.name);
@@ -221,12 +223,25 @@ function App() {
       return;
     }
 
-    setSourceInfo({ type: 'file', name: file.name });
+    setSourceInfo({ type: isImage ? 'image' : isMedia ? 'media' : 'file', name: file.name });
     setIsProcessingReady(false);
     setAppState('processing');
     try {
       let content = '';
-      if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.srt') || file.name.endsWith('.vtt')) {
+      if (isImage) {
+        toast.loading("Scanning lecture whiteboard & notes with OCR Vision...", { id: 'ocr' });
+        try {
+          content = await extractTextFromImage(file, (percent, status) => {
+            toast.loading(`OCR Vision: ${status} (${percent}%)`, { id: 'ocr' });
+          });
+          toast.success("Text recognized from whiteboard photo!", { id: 'ocr' });
+        } catch (ocrErr) {
+          console.error("Image OCR error:", ocrErr);
+          toast.error(ocrErr.message || "Failed to extract text from image.", { id: 'ocr', duration: 7000 });
+          setAppState('upload');
+          return;
+        }
+      } else if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.srt') || file.name.endsWith('.vtt')) {
         content = await file.text();
       } else if (isMedia) {
         toast.loading("Transcribing lecture with Groq Whisper (Supports Hindi, English & all languages)...", { id: 'transcribe' });
@@ -245,7 +260,7 @@ function App() {
       const result = await processLecture(content);
       const lectureId = `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       result.id = lectureId;
-      result.sourceType = isMedia ? 'media' : 'file';
+      result.sourceType = isImage ? 'image' : isMedia ? 'media' : 'file';
       result.sourceName = file.name;
       setDashboardData(result);
       setIsProcessingReady(true);

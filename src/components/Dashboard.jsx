@@ -165,6 +165,11 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
               <CheckCircle2 className="w-3.5 h-3.5 text-black" />
               <span>SYNCED TO SUPABASE</span>
             </span>
+            {data?.sourceType === 'image' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#FFF1C5] border-2 border-black rounded-full text-xs font-mono font-black text-black shadow-[2px_2px_0px_#000]">
+                <span>📸 WHITEBOARD VISION OCR</span>
+              </span>
+            )}
           </div>
         </div>
         

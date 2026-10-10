@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BrainCircuit, CheckCircle2, Loader2, Sparkles, FileAudio, Video, Globe, ArrowRight } from 'lucide-react';
+import { BrainCircuit, CheckCircle2, Loader2, Sparkles, FileAudio, Video, Globe, ArrowRight, Camera } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 const ProcessingState = ({ sourceInfo, isReady, data, onComplete, onCancel }) => {
@@ -17,16 +17,16 @@ const ProcessingState = ({ sourceInfo, isReady, data, onComplete, onCancel }) =>
     {
       id: 0,
       title: 'Source Ingestion',
-      activeText: `Connecting & verifying ${sourceType === 'youtube' ? 'YouTube video stream' : sourceType === 'web' ? 'web article link' : 'lecture file'}...`,
+      activeText: `Connecting & verifying ${sourceType === 'youtube' ? 'YouTube video stream' : sourceType === 'web' ? 'web article link' : sourceType === 'image' ? 'whiteboard photo (OCR Vision)' : 'lecture file'}...`,
       doneText: `Received ${sourceName} successfully!`,
-      icon: sourceType === 'youtube' ? Video : sourceType === 'web' ? Globe : FileAudio,
+      icon: sourceType === 'youtube' ? Video : sourceType === 'web' ? Globe : sourceType === 'image' ? Camera : FileAudio,
       color: 'bg-[#FFCCD5]',
     },
     {
       id: 1,
       title: 'Content & Dialogue Extraction',
-      activeText: 'Parsing lecture speech segments and transcript...',
-      doneText: 'Extracted speech & dialogue content successfully!',
+      activeText: sourceType === 'image' ? 'Running OCR Vision on whiteboard text & equations...' : 'Parsing lecture speech segments and transcript...',
+      doneText: sourceType === 'image' ? 'Extracted text & diagrams from photo successfully!' : 'Extracted speech & dialogue content successfully!',
       icon: Sparkles,
       color: 'bg-[#FFF1C5]',
     },
