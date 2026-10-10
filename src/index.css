@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Brutal Pastel Design System */
+@layer utilities {
+  .shadow-pastel-brutal-card {
+    box-shadow: 8px 8px 0px 0px #000000;
+  }
+
+  .shadow-pastel-brutal-btn {
+    box-shadow: 4px 4px 0px 0px #000000;
+  }
+}
+
+/* Base Body Styles for Brutal Pastel */
+body, .theme-pastelBrutal {
+  font-family: 'DM Sans', sans-serif;
+  background-color: #FFF9F5;
+  color: #000000;
+}
+
+h1, h2, h3, h4,
+.theme-pastelBrutal h1,
+.theme-pastelBrutal h2,
+.theme-pastelBrutal h3,
+.theme-pastelBrutal h4 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+/* Micro-animations for Brutal Pastel stickers & elements */
+@keyframes pastel-float-soft {
+  0%, 100% { transform: translateY(0px) rotate(-1.5deg); }
+  50% { transform: translateY(-12px) rotate(1.5deg); }
+}
+
+@keyframes pastel-float-alt {
+  0%, 100% { transform: translateY(0px) rotate(2deg); }
+  50% { transform: translateY(-16px) rotate(-2deg); }
+}
+
+@keyframes pastel-sticker-wiggle {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+.animate-pastel-float {
+  animation: pastel-float-soft 6s ease-in-out infinite;
+}
+
+.animate-pastel-float-alt {
+  animation: pastel-float-alt 7s ease-in-out infinite;
+}
+
+.animate-pastel-wiggle {
+  animation: pastel-sticker-wiggle 3s ease-in-out infinite;
+}

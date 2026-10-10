@@ -1,0 +1,464 @@
+// Distributed Groq AI API Keys
+const SUMMARY_KEY = import.meta.env.VITE_GROQ_SUMMARY_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
+const NOTES_KEY = import.meta.env.VITE_GROQ_NOTES_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
+const QUIZ_KEY = import.meta.env.VITE_GROQ_QUIZ_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
+const FLASHCARDS_KEY = import.meta.env.VITE_GROQ_FLASHCARDS_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
+const WHISPER_KEY = import.meta.env.VITE_GROQ_WHISPER_KEY || import.meta.env.VITE_GROQ_SUMMARY_KEY || "";
+
+const MODEL = import.meta.env.VITE_GROQ_MODEL || "qwen/qwen3.8-27b";
+
+/**
+ * Universal Groq Chat Completion caller with resilient model failover
+ */
+async function callGroq(prompt, apiKey, options = {}) {
+  const primaryModel = options.model || MODEL;
+  const modelsToTry = [...new Set([primaryModel, "llama-3.3-70b-versatile", "llama-3.1-8b-instant"])];
+
+  let lastError = null;
+  for (const model of modelsToTry) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: options.temperature ?? 0.7,
+          response_format: { type: "json_object" }
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error?.message || `Groq API Error on ${model}`);
+      }
+      return JSON.parse(data.choices[0].message.content);
+    } catch (err) {
+      lastError = err;
+      console.warn(`Groq request with ${model} failed, trying failover:`, err.message);
+    }
+  }
+  throw lastError || new Error("All Groq models encountered errors.");
+}
+
+/**
+ * Audio Transcription using Groq Whisper (Supports Hindi, English & 90+ languages)
+ * Note: Groq Whisper has a hard 25 MB maximum payload limit.
+ */
+export async function transcribeAudio(file, language = null) {
+  const MAX_SIZE = 25 * 1024 * 1024; // 25 MB limit
+  if (file && file.size > MAX_SIZE) {
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    throw new Error(`File size (${sizeMB} MB) exceeds Groq Whisper's 25 MB limit. Please compress the file or convert to audio (.mp3 / .m4a).`);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 75000); // 75s safety timeout
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('model', 'whisper-large-v3-turbo');
+    formData.append('response_format', 'json');
+    if (language) {
+      formData.append('language', language);
+    }
+
+    const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${WHISPER_KEY}`
+      },
+      body: formData,
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error?.message || "Failed to transcribe audio file");
+    }
+    return data.text;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error("Transcription timed out. The file might be taking too long to upload over your connection.");
+    }
+    throw err;
+  }
+}
+
+
+/**
+ * Worker 1: Summary, Title, Academic Subject, Key Glossary & Teacher Intent Detection (Summary API Key)
+ */
+async function fetchSummaryWorker(transcript) {
+  const prompt = `You are an elite multilingual academic professor, cognitive psychologist, and master examination strategist.
+The lecture material may be in English, Hindi (हिंदी / Devanagari), Romanized Hinglish, or any other language.
+Comprehend the lecture content and deeply analyze the TEACHER'S INTENT, PEDAGOGICAL TONE, AND EMOTIONAL EMPHASIS:
+- Detect verbal emphasis cues: "this is important", "mark this 5 stars", "exam me zaroor aayega", "pay attention here", "concentrate on this formula", "students always mess this up".
+- Detect de-emphasis cues: "just for reference", "won't be asked in finals", "skip this proof", "optional reading".
+- Detect warnings and emotional urgency: places where the teacher shows heightened concern, warns of traps, or repeats a definition multiple times.
+
+Format strictly in JSON:
+{
+  "title": "string (engaging, descriptive lecture title)",
+  "subject": "string (academic discipline/field)",
+  "summary": "string (concise 2-3 sentence executive overview capturing core objectives and findings)",
+  "teacherIntent": {
+    "overallTone": "string (e.g. 'Highly Exam-Oriented & Urging Focus', 'Concept-Building & Exploratory', 'Stern on Fundamentals', 'Fast-Paced Exam Sprint')",
+    "examReadinessScore": 88,
+    "highYieldTopics": [
+      {
+        "topic": "string (e.g. 'Photosynthesis Light Reactions' or 'Derivation of Bernoulli Equation')",
+        "intentLevel": "MUST-KNOW | HIGH PRIORITY | FREQUENTLY TESTED",
+        "verbalCues": "string (direct quote or paraphrase showing teacher's emphasis, e.g. 'Teacher stressed: Mark this 5 stars, repeated twice that this carries 5 marks in finals')",
+        "whyImportant": "string (exact academic reason why teacher prioritized this for exams)"
+      }
+    ],
+    "warningTraps": [
+      {
+        "concept": "string (topic or step)",
+        "warning": "string (teacher's explicit warning where students lose marks or confuse concepts)"
+      }
+    ],
+    "lowPriorityTopics": [
+      {
+        "topic": "string",
+        "reason": "string (why the teacher indicated this is low weightage, supplementary, or safe to skim)"
+      }
+    ]
+  },
+  "briefNotes": [
+    "string (high-yield key takeaway 1)",
+    "string (high-yield key takeaway 2)",
+    "string (high-yield key takeaway 3)"
+  ],
+  "keyTerms": [
+    "string (Term 1: concise definition and significance)",
+    "string (Term 2: concise definition and significance)",
+    "string (Term 3: concise definition and significance)",
+    "string (Term 4: concise definition and significance)"
+  ]
+}
+
+Lecture Material:
+${transcript}`;
+
+  return await callGroq(prompt, SUMMARY_KEY);
+}
+
+/**
+ * Worker 2: Structured Notes, Detailed Breakdown & In-Depth PDF Compendium (Notes & PDF Key)
+ */
+async function fetchNotesWorker(transcript) {
+  const prompt = `You are a master academic notes compiler, exam coach, and curriculum specialist.
+The lecture material may be in English, Hindi (हिंदी / Devanagari), Romanized Hinglish, or any other language.
+Understand the content completely in its original language and generate high-yield, structured academic sections for both on-screen quick review and downloadable exhaustive master notes.
+For every section, evaluate the TEACHER'S INTENT and assign an exam intent badge along with a teacher's emphasis note.
+
+Format strictly in JSON:
+{
+  "sections": [
+    {
+      "heading": "string (clear topic heading)",
+      "intentBadge": "string (one of: '🔥 MUST-KNOW EXAM TOPIC', '⚠️ COMMON EXAM TRAP', '🎯 CORE MECHANISM', '📖 FOUNDATIONAL')",
+      "teacherEmphasis": "string (concise quote or highlight of teacher's attitude towards this topic, e.g. 'Teacher highlighted: Crucial for numerical problems')",
+      "points": [
+        "string (concise bullet point for quick on-screen scanning)",
+        "string (concise bullet point for quick on-screen scanning)"
+      ],
+      "detailedContent": "string (thorough, comprehensive multi-paragraph explanation covering underlying mechanisms, formulas/laws, real-world examples, and deep conceptual explanations for this section)"
+    }
+  ],
+  "comprehensiveGuide": "string (extensive in-depth markdown study compendium covering deep dives, common exam misconceptions, and comprehensive analysis)"
+}
+
+Lecture Material:
+${transcript}`;
+
+  return await callGroq(prompt, NOTES_KEY);
+}
+
+/**
+ * Worker 3: Active Recall Quiz Generation (Quiz API Key)
+ */
+async function fetchQuizWorker(context, preferences = {}) {
+  const {
+    difficulty = 'medium',
+    numQuestions = 4,
+    selectedTopics = []
+  } = preferences;
+
+  const difficultyPrompt = {
+    easy: "Difficulty Level: Beginner / Easy. Focus on foundational definitions, direct identification of core principles, and straightforward factual recall.",
+    medium: "Difficulty Level: Intermediate / Standard Academic. Focus on conceptual understanding, cause-and-effect relationships, and key mechanisms.",
+    hard: "Difficulty Level: Advanced / Exam Master. Focus on intricate multi-step problem solving, tricky scenario analysis, distinguishing subtle edge cases, formulas/laws, and deep conceptual deductions."
+  }[difficulty] || "Difficulty Level: Intermediate / Standard Academic.";
+
+  const topicPrompt = Array.isArray(selectedTopics) && selectedTopics.length > 0
+    ? `Specific Topic Scope: Focus questions strictly on the following topic(s): ${selectedTopics.join(', ')}.`
+    : `Topic Scope: Comprehensive coverage across all main sections of the lecture material.`;
+
+  const prompt = `You are an elite academic professor and master examination creator.
+The lecture material may be in English, Hindi (हिंदी), Hinglish, or other languages.
+Comprehend the underlying academic concepts and formulate an active-recall multiple-choice quiz adhering strictly to the user preferences:
+- Total Questions: Exactly ${numQuestions} questions.
+- ${difficultyPrompt}
+- ${topicPrompt}
+- TEACHER'S INTENT & EXAM ALIGNMENT: Prioritize formulating questions around topics and formulas that the instructor verbally emphasized, highlighted with warnings, or marked as high-yield exam material.
+
+Format strictly in JSON:
+{
+  "quizTitle": "string (engaging, descriptive quiz title reflecting difficulty and focus)",
+  "difficulty": "${difficulty}",
+  "questionCount": ${numQuestions},
+  "questions": [
+    {
+      "id": 1,
+      "question": "string (clear question matching the ${difficulty} difficulty level)",
+      "options": ["string (Option A)", "string (Option B)", "string (Option C)", "string (Option D)"],
+      "correctIndex": 0,
+      "explanation": "string explaining why this answer is correct and connecting to teacher's core exam takeaway"
+    }
+  ]
+}
+
+Lecture Material:
+${context}`;
+
+  return await callGroq(prompt, QUIZ_KEY);
+}
+
+/**
+ * Worker 4: Interactive Flashcards Generation (Flashcards API Key)
+ */
+async function fetchFlashcardsWorker(context) {
+  const prompt = `You are an expert cognitive learning specialist, exam strategist, and memory retention coach.
+The lecture material may be in English, Hindi (हिंदी), Hinglish, or other languages.
+Comprehend the core mechanisms and create 6 to 8 high-yield interactive active-recall study flashcards.
+Focus heavily on the TEACHER'S EMPHASIS: key definitions, must-know formulas, and tricky pitfalls the teacher warned students about.
+Each flashcard must feature a thought-provoking front question/concept and a clear, thorough explanation or answer on the back (in 2-3 focused sentences).
+
+Format strictly in JSON:
+{
+  "deckTitle": "string (e.g. Core Concepts Mastery Deck)",
+  "flashcards": [
+    {
+      "id": 1,
+      "front": "string (Core question, definition query, or conceptual scenario)",
+      "back": "string (Crisp, high-yield explanation in 2-3 sentences explaining mechanisms, significance, or solution)",
+      "category": "string (e.g. Definition, Mechanism, Formula, Application, or Key Concept)",
+      "hint": "string (Short subtle memory clue or mnemonic)"
+    }
+  ]
+}
+
+Lecture Material:
+${context}`;
+
+  return await callGroq(prompt, FLASHCARDS_KEY);
+}
+
+/**
+ * Distributed Parallel Lecture Processing
+ * Distributes workload across 4 separate Groq API keys simultaneously:
+ * - Summary Key     -> Title, Subject, Executive Summary, Brief Notes, Key Terms, Teacher Intent Detection
+ * - Notes Key       -> Structured Sections, Points, Detailed Content, Intent Badges, Comprehensive Guide
+ * - Quiz Key        -> Active Recall Quiz (pre-computed in parallel)
+ * - Flashcards Key  -> Active Recall Flashcard Deck (pre-computed in parallel)
+ */
+export const processLecture = async (transcript) => {
+  // Cap input text to ~14,000 characters to stay safely within token limits
+  const safeTranscript = transcript && transcript.length > 14000 
+    ? transcript.slice(0, 14000) + "\n\n[Content truncated to primary sections for optimal processing]" 
+    : transcript;
+
+  // Run all 4 workers simultaneously across the distributed API keys
+  const [summaryOutcome, notesOutcome, quizOutcome, flashcardsOutcome] = await Promise.allSettled([
+    fetchSummaryWorker(safeTranscript),
+    fetchNotesWorker(safeTranscript),
+    fetchQuizWorker(safeTranscript),
+    fetchFlashcardsWorker(safeTranscript)
+  ]);
+
+  const summaryData = summaryOutcome.status === 'fulfilled' ? summaryOutcome.value : {};
+  const notesData = notesOutcome.status === 'fulfilled' ? notesOutcome.value : {};
+  const quizData = quizOutcome.status === 'fulfilled' ? quizOutcome.value : null;
+  const flashcardsData = flashcardsOutcome.status === 'fulfilled' ? flashcardsOutcome.value : null;
+
+  if (summaryOutcome.status === 'rejected' && notesOutcome.status === 'rejected') {
+    throw new Error(summaryOutcome.reason?.message || notesOutcome.reason?.message || "Failed to process lecture across distributed workers");
+  }
+
+  // Normalize keyTerms to always guarantee a clean array of strings
+  const rawTerms = summaryData.keyTerms || summaryData.key_terms || summaryData.keyterms || summaryData.keywords || [];
+  let normalizedTerms = [];
+  if (Array.isArray(rawTerms)) {
+    normalizedTerms = rawTerms.map(t => {
+      if (typeof t === 'object' && t !== null) {
+        return t.term || t.name ? `${t.term || t.name}${t.definition ? `: ${t.definition}` : ''}` : JSON.stringify(t);
+      }
+      return String(t);
+    }).filter(Boolean);
+  } else if (typeof rawTerms === 'string') {
+    normalizedTerms = rawTerms.split(/[,;\n]/).map(t => t.replace(/^[-*•\d.]+\s*/, '').trim()).filter(Boolean);
+  }
+
+  // Fallback to extract terms from sections if empty
+  const sections = notesData.sections || summaryData.sections || [];
+  if (normalizedTerms.length === 0 && Array.isArray(sections)) {
+    normalizedTerms = sections.map(s => s.heading).filter(Boolean);
+  }
+
+  // Normalize Teacher Intent & Emotion Detection
+  const rawIntent = summaryData.teacherIntent || {};
+  const teacherIntent = {
+    overallTone: rawIntent.overallTone || "Exam-Focused & Rigorous",
+    examReadinessScore: typeof rawIntent.examReadinessScore === 'number' ? rawIntent.examReadinessScore : 88,
+    highYieldTopics: Array.isArray(rawIntent.highYieldTopics) && rawIntent.highYieldTopics.length > 0
+      ? rawIntent.highYieldTopics
+      : (summaryData.briefNotes || []).slice(0, 3).map((note, i) => ({
+          topic: note.split(/[:\-–—]/)[0]?.trim() || `Core Topic ${i + 1}`,
+          intentLevel: "MUST-KNOW",
+          verbalCues: "Instructor emphasized this concept for foundational exam mastery.",
+          whyImportant: note
+        })),
+    warningTraps: Array.isArray(rawIntent.warningTraps) ? rawIntent.warningTraps : [],
+    lowPriorityTopics: Array.isArray(rawIntent.lowPriorityTopics) ? rawIntent.lowPriorityTopics : []
+  };
+
+  return {
+    title: summaryData.title || "Lecture Notes",
+    subject: summaryData.subject || "General Studies",
+    summary: summaryData.summary || "Summary generated from lecture transcript.",
+    teacherIntent,
+    briefNotes: summaryData.briefNotes || [],
+    sections: sections,
+    keyTerms: normalizedTerms,
+    comprehensiveGuide: notesData.comprehensiveGuide || "",
+    cachedQuiz: quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 ? quizData : null,
+    cachedFlashcards: flashcardsData && Array.isArray(flashcardsData.flashcards) && flashcardsData.flashcards.length > 0 ? flashcardsData : null
+  };
+};
+
+/**
+ * Active Recall Quiz Generator (uses dedicated QUIZ_KEY with preferences support)
+ */
+export const generateQuiz = async (lectureData, preferences = null) => {
+  if (!preferences && lectureData?.cachedQuiz && Array.isArray(lectureData.cachedQuiz.questions) && lectureData.cachedQuiz.questions.length > 0) {
+    return lectureData.cachedQuiz;
+  }
+
+  const prefs = preferences || { difficulty: 'medium', numQuestions: 4, selectedTopics: [] };
+
+  const context = typeof lectureData === 'string'
+    ? lectureData
+    : `Title: ${lectureData?.title || 'Lecture'}\nSubject: ${lectureData?.subject || 'General'}\nSummary: ${lectureData?.summary || ''}\nKey Terms: ${lectureData?.keyTerms?.join(', ') || ''}\nSections: ${JSON.stringify(lectureData?.sections || [])}`;
+
+  try {
+    const result = await fetchQuizWorker(context, prefs);
+    if (result && Array.isArray(result.questions) && result.questions.length > 0) {
+      return result;
+    }
+    throw new Error("Invalid quiz structure returned from API");
+  } catch (err) {
+    console.warn("Dedicated quiz API encountered issue, deploying contextual fallback:", err);
+    return getFallbackQuiz(lectureData, prefs);
+  }
+};
+
+/**
+ * Interactive Flashcard Deck Generator (uses dedicated FLASHCARDS_KEY)
+ */
+export const generateFlashcards = async (lectureData) => {
+  if (lectureData?.cachedFlashcards && Array.isArray(lectureData.cachedFlashcards.flashcards) && lectureData.cachedFlashcards.flashcards.length > 0) {
+    return lectureData.cachedFlashcards;
+  }
+
+  const context = typeof lectureData === 'string'
+    ? lectureData
+    : `Title: ${lectureData?.title || 'Lecture'}\nSubject: ${lectureData?.subject || 'General'}\nSummary: ${lectureData?.summary || ''}\nKey Terms: ${lectureData?.keyTerms?.join(', ') || ''}\nSections: ${JSON.stringify(lectureData?.sections || [])}`;
+
+  try {
+    const result = await fetchFlashcardsWorker(context);
+    if (result && Array.isArray(result.flashcards) && result.flashcards.length > 0) {
+      return result;
+    }
+    throw new Error("Invalid flashcards structure returned from API");
+  } catch (err) {
+    console.warn("Dedicated flashcards API encountered issue, deploying contextual fallback:", err);
+    return getFallbackFlashcards(lectureData);
+  }
+};
+
+const getFallbackQuiz = (lectureData, prefs = {}) => {
+  const count = Number(prefs?.numQuestions) || 4;
+  const difficulty = prefs?.difficulty || "medium";
+  const title = lectureData?.title || "Active Recall Quiz";
+  const terms = Array.isArray(lectureData?.keyTerms) && lectureData.keyTerms.length > 0
+    ? lectureData.keyTerms
+    : ["Core Concept", "Key Definition", "Primary Principle", "Core Methodology", "Mechanism", "Application"];
+  
+  const sections = Array.isArray(lectureData?.sections) && lectureData.sections.length > 0
+    ? (prefs?.selectedTopics?.length > 0 
+        ? lectureData.sections.filter(s => prefs.selectedTopics.includes(s.heading))
+        : lectureData.sections)
+    : [{ heading: "Key Fundamentals", points: [lectureData?.summary || "Essential review concept"] }];
+
+  const effectiveSections = sections.length > 0 ? sections : (lectureData?.sections || [{ heading: "Fundamentals", points: ["Core principle"] }]);
+
+  return {
+    quizTitle: `${title} - ${difficulty.toUpperCase()} Quiz`,
+    difficulty: difficulty,
+    questionCount: count,
+    questions: Array.from({ length: Math.min(count, 10) }, (_, idx) => {
+      const term = terms[idx % terms.length];
+      const section = effectiveSections[idx % effectiveSections.length];
+      const point = section.points?.[0] || `Understanding the role and application of ${term} in ${title}.`;
+      return {
+        id: idx + 1,
+        question: `[${difficulty.toUpperCase()}] In the context of ${section.heading || title}, how is "${term}" defined or applied?`,
+        options: [
+          point,
+          `An irrelevant secondary parameter not directly related to ${title}`,
+          `An obsolete theory superseded in modern literature`,
+          `A computational artifact with no physical interpretation`
+        ],
+        correctIndex: 0,
+        explanation: `"${term}" directly relates to ${section.heading || title}: ${point}`
+      };
+    })
+  };
+};
+
+const getFallbackFlashcards = (lectureData) => {
+  const title = lectureData?.title || "Lecture Flashcards";
+  const terms = Array.isArray(lectureData?.keyTerms) && lectureData.keyTerms.length > 0
+    ? lectureData.keyTerms
+    : ["Core Mechanism", "Primary Rule", "Underlying Principle", "Methodology"];
+  
+  const sections = Array.isArray(lectureData?.sections) && lectureData.sections.length > 0
+    ? lectureData.sections
+    : [{ heading: "Key Concept", points: [lectureData?.summary || "Fundamental study principle"] }];
+
+  const cards = terms.slice(0, 6).map((term, idx) => {
+    const section = sections[idx % sections.length];
+    const point = section.points?.[0] || lectureData?.summary || `Crucial concept within ${title}.`;
+    return {
+      id: idx + 1,
+      front: `What is the significance and definition of "${term}"?`,
+      back: `${point}\n\nKey context from ${section.heading || title}.`,
+      category: idx % 2 === 0 ? "Key Term" : "Core Mechanism",
+      hint: `Pertains to ${section.heading || 'lecture core concepts'}`
+    };
+  });
+
+  return {
+    deckTitle: `${title} - Flashcard Deck`,
+    flashcards: cards
+  };
+};
