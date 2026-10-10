@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, ListChecks, Brain, Sparkles, FileText, ArrowLeft, Layers, CheckCircle2 } from 'lucide-react';
+import { BookOpen, ListChecks, Brain, Sparkles, FileText, ArrowLeft, Layers, CheckCircle2, Clock, ExternalLink } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { generateQuiz, generateFlashcards } from '../lib/ai';
 import QuizModal from './QuizModal';
@@ -167,16 +167,43 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
                 <div key={idx} className="p-4 rounded-2xl bg-[#FFF9F5] border-2 border-black">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <h4 className="text-base font-black text-black flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-lg bg-[#FFCCD5] border-2 border-black shadow-[2px_2px_0px_#000] flex items-center justify-center text-xs font-mono font-black">
+                      <span className="w-6 h-6 rounded-lg bg-[#FFCCD5] border-2 border-black shadow-[2px_2px_0px_#000] flex items-center justify-center text-xs font-mono font-black shrink-0">
                         {idx + 1}
                       </span>
-                      {section.heading}
+                      <span>{section.heading}</span>
                     </h4>
-                    {section.intentBadge && (
-                      <span className="px-2.5 py-0.5 rounded-lg bg-[#FFF1C5] border border-black text-[10px] font-mono font-black uppercase text-black shadow-[1px_1px_0px_#000]">
-                        {section.intentBadge}
-                      </span>
-                    )}
+                    
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {section.timestamp && (
+                        data?.sourceUrl && (data?.sourceType === 'youtube' || data?.sourceUrl.includes('youtube.com') || data?.sourceUrl.includes('youtu.be')) ? (
+                          <a
+                            href={`${data.sourceUrl}${data.sourceUrl.includes('?') ? '&' : '?'}t=${section.startSeconds || 0}s`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`Jump to ${section.timestamp} in YouTube video`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#C7E9DE] border-2 border-black text-[11px] font-mono font-black text-black shadow-[2px_2px_0px_#000] hover:bg-[#a9ded0] hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                          >
+                            <Clock className="w-3.5 h-3.5 text-black" />
+                            <span>⏱️ {section.timestamp}</span>
+                            <ExternalLink className="w-3 h-3 text-black opacity-70" />
+                          </a>
+                        ) : (
+                          <span 
+                            title={`Section timestamp: ${section.timestamp}`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#C7E9DE] border-2 border-black text-[11px] font-mono font-black text-black shadow-[2px_2px_0px_#000]"
+                          >
+                            <Clock className="w-3.5 h-3.5 text-black" />
+                            <span>⏱️ {section.timestamp}</span>
+                          </span>
+                        )
+                      )}
+
+                      {section.intentBadge && (
+                        <span className="px-2.5 py-0.5 rounded-lg bg-[#FFF1C5] border border-black text-[10px] font-mono font-black uppercase text-black shadow-[1px_1px_0px_#000]">
+                          {section.intentBadge}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Teacher's vocal note / emphasis if present */}

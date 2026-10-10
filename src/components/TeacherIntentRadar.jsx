@@ -10,7 +10,8 @@ import {
   HelpCircle,
   EyeOff,
   Quote,
-  Target
+  Target,
+  Clock
 } from 'lucide-react';
 
 const TeacherIntentRadar = ({ intentData }) => {
@@ -133,9 +134,17 @@ const TeacherIntentRadar = ({ intentData }) => {
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-xs font-mono font-black px-2 py-0.5 rounded-lg bg-[#FFCCD5] border border-black shadow-[1px_1px_0px_#000]">
-                          🔥 {item.intentLevel || 'MUST-KNOW'}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-mono font-black px-2 py-0.5 rounded-lg bg-[#FFCCD5] border border-black shadow-[1px_1px_0px_#000]">
+                            🔥 {item.intentLevel || 'MUST-KNOW'}
+                          </span>
+                          {item.timestamp && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono font-black px-2 py-0.5 rounded-lg bg-[#C7E9DE] border border-black text-black shadow-[1px_1px_0px_#000]">
+                              <Clock className="w-2.5 h-2.5 text-black" />
+                              <span>⏱️ {item.timestamp}</span>
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[11px] font-mono font-bold text-zinc-500">
                           Priority #{idx + 1}
                         </span>
@@ -187,10 +196,18 @@ const TeacherIntentRadar = ({ intentData }) => {
                     key={idx}
                     className="p-4 rounded-2xl bg-[#FFF9E6] border-3 border-black shadow-[4px_4px_0px_#000]"
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="px-2 py-0.5 rounded-lg bg-amber-200 border border-black text-[10px] font-mono font-black uppercase text-amber-950">
-                        ⚠️ PITFALL TRAP
-                      </span>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-lg bg-amber-200 border border-black text-[10px] font-mono font-black uppercase text-amber-950">
+                          ⚠️ PITFALL TRAP
+                        </span>
+                        {trap.timestamp && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono font-black px-2 py-0.5 rounded-lg bg-[#C7E9DE] border border-black text-black shadow-[1px_1px_0px_#000]">
+                            <Clock className="w-2.5 h-2.5 text-black" />
+                            <span>⏱️ {trap.timestamp}</span>
+                          </span>
+                        )}
+                      </div>
                       <h4 className="text-sm font-black text-black">
                         {trap.concept || 'Common Confusion'}
                       </h4>

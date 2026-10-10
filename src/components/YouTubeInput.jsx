@@ -68,6 +68,7 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
           onTranscriptReady(transcript, { 
             type: 'youtube', 
             name: url,
+            url: url,
             language: language || 'auto-detected'
           });
         }

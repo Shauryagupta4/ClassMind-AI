@@ -46,7 +46,23 @@ function decodeHtmlEntities(str) {
 }
 
 /**
- * Multilingual YouTube transcript retriever
+ * Converts seconds into [MM:SS] or [HH:MM:SS] timestamp
+ */
+function formatTimestamp(seconds) {
+  if (typeof seconds !== 'number' || isNaN(seconds)) return '00:00';
+  const s = Math.floor(seconds);
+  const m = Math.floor(s / 60);
+  const remSec = s % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const remMin = m % 60;
+    return `${String(h).padStart(2, '0')}:${String(remMin).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+}
+
+/**
+ * Multilingual YouTube transcript retriever with Audio/Video Timestamps
  * Attempts to retrieve transcripts across prioritized language tracks:
  * 1. User preferred language (if provided)
  * 2. Hindi (hi, hi-IN, hi-Latn)
@@ -69,12 +85,31 @@ async function fetchMultilingualTranscript(url, preferredLang = null) {
       const config = lang ? { lang } : undefined;
       const res = await YoutubeTranscript.fetchTranscript(url, config);
       if (Array.isArray(res) && res.length > 0) {
-        const rawText = res.map(t => t.text).join(' ');
-        const cleanedText = decodeHtmlEntities(rawText);
-        if (cleanedText.length > 10) {
+        // Group transcript items into timeline chunks with [MM:SS] timestamps
+        const timestampedLines = [];
+        let currentChunk = [];
+        let chunkStartTime = 0;
+
+        for (let i = 0; i < res.length; i++) {
+          const item = res[i];
+          const offsetSec = (item.offset || 0) / 1000;
+          if (currentChunk.length === 0) {
+            chunkStartTime = offsetSec;
+          }
+          currentChunk.push(decodeHtmlEntities(item.text));
+
+          if (offsetSec - chunkStartTime >= 35 || i === res.length - 1) {
+            timestampedLines.push(`[${formatTimestamp(chunkStartTime)}] ${currentChunk.join(' ')}`);
+            currentChunk = [];
+          }
+        }
+
+        const formattedTranscript = timestampedLines.join('\n');
+        if (formattedTranscript.length > 10) {
           return {
-            transcript: cleanedText,
-            language: lang || 'auto-detected'
+            transcript: formattedTranscript,
+            language: lang || 'auto-detected',
+            hasTimestamps: true
           };
         }
       }

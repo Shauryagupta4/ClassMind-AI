@@ -58,7 +58,23 @@ async function callGroq(prompt, apiKey, options = {}) {
 }
 
 /**
- * Audio Transcription using Groq Whisper (Supports Hindi, English & 90+ languages)
+ * Converts seconds into [MM:SS] or [HH:MM:SS] timestamp
+ */
+export function formatTimestamp(seconds) {
+  if (typeof seconds !== 'number' || isNaN(seconds)) return '00:00';
+  const s = Math.floor(seconds);
+  const m = Math.floor(s / 60);
+  const remSec = s % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const remMin = m % 60;
+    return `${String(h).padStart(2, '0')}:${String(remMin).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+}
+
+/**
+ * Audio/Video Transcription using Groq Whisper (Supports Hindi, English & 90+ languages with timestamps)
  * Note: Groq Whisper has a hard 25 MB maximum payload limit.
  */
 export async function transcribeAudio(file, language = null) {
@@ -80,7 +96,7 @@ export async function transcribeAudio(file, language = null) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('model', 'whisper-large-v3-turbo');
-    formData.append('response_format', 'json');
+    formData.append('response_format', 'verbose_json');
     if (language) {
       formData.append('language', language);
     }
@@ -100,7 +116,17 @@ export async function transcribeAudio(file, language = null) {
     if (!response.ok) {
       throw new Error(data.error?.message || "Failed to transcribe audio file");
     }
-    return data.text;
+
+    // Format segments into timestamped transcript lines
+    if (data.segments && Array.isArray(data.segments) && data.segments.length > 0) {
+      const timestampedLines = data.segments.map(seg => {
+        const start = formatTimestamp(seg.start || 0);
+        return `[${start}] ${seg.text.trim()}`;
+      });
+      return timestampedLines.join('\n');
+    }
+
+    return data.text || "";
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
@@ -135,13 +161,15 @@ Format strictly in JSON:
         "topic": "string (e.g. 'Photosynthesis Light Reactions' or 'Derivation of Bernoulli Equation')",
         "intentLevel": "MUST-KNOW | HIGH PRIORITY | FREQUENTLY TESTED",
         "verbalCues": "string (direct quote or paraphrase showing teacher's emphasis, e.g. 'Teacher stressed: Mark this 5 stars, repeated twice that this carries 5 marks in finals')",
-        "whyImportant": "string (exact academic reason why teacher prioritized this for exams)"
+        "whyImportant": "string (exact academic reason why teacher prioritized this for exams)",
+        "timestamp": "string (e.g. '02:40' if identifiable from [MM:SS] markers in transcript)"
       }
     ],
     "warningTraps": [
       {
         "concept": "string (topic or step)",
-        "warning": "string (teacher's explicit warning where students lose marks or confuse concepts)"
+        "warning": "string (teacher's explicit warning where students lose marks or confuse concepts)",
+        "timestamp": "string (e.g. '05:15' if identifiable from transcript markers)"
       }
     ],
     "lowPriorityTopics": [
@@ -176,7 +204,10 @@ ${transcript}`;
 async function fetchNotesWorker(transcript) {
   const prompt = `You are a master academic notes compiler, exam coach, and curriculum specialist.
 The lecture material may be in English, Hindi (हिंदी / Devanagari), Romanized Hinglish, or any other language.
+The lecture material may contain audio/video timeline markers formatted like [MM:SS] or [HH:MM:SS].
+
 Understand the content completely in its original language and generate high-yield, structured academic sections for both on-screen quick review and downloadable exhaustive master notes.
+TIMESTAMPS: For every section, extract or calculate the start and end timestamp (e.g. "01:25 - 04:30" or "00:00 - 02:45") from the transcript time markers where this section's topic is covered in the audio/video.
 For every section, evaluate the TEACHER'S INTENT and assign an exam intent badge along with a teacher's emphasis note.
 
 Format strictly in JSON:
@@ -184,6 +215,7 @@ Format strictly in JSON:
   "sections": [
     {
       "heading": "string (clear topic heading)",
+      "timestamp": "string (e.g. '01:25 - 04:30' or '00:00 - 02:15' indicating when this topic occurs in the audio/video)",
       "intentBadge": "string (one of: '🔥 MUST-KNOW EXAM TOPIC', '⚠️ COMMON EXAM TRAP', '🎯 CORE MECHANISM', '📖 FOUNDATIONAL')",
       "teacherEmphasis": "string (concise quote or highlight of teacher's attitude towards this topic, e.g. 'Teacher highlighted: Crucial for numerical problems')",
       "points": [
@@ -327,8 +359,34 @@ export const processLecture = async (transcript) => {
     normalizedTerms = rawTerms.split(/[,;\n]/).map(t => t.replace(/^[-*•\d.]+\s*/, '').trim()).filter(Boolean);
   }
 
+  // Helper to parse "MM:SS" or "HH:MM:SS" to seconds for audio/video seeking
+  const parseTimestampToSeconds = (ts) => {
+    if (!ts || typeof ts !== 'string') return 0;
+    const match = ts.match(/(\d+):(\d+)(?::(\d+))?/);
+    if (!match) return 0;
+    if (match[3]) {
+      return parseInt(match[1], 10) * 3600 + parseInt(match[2], 10) * 60 + parseInt(match[3], 10);
+    }
+    return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+  };
+
+  // Normalize sections and guarantee structured audio/video timestamps
+  const rawSections = notesData.sections || summaryData.sections || [];
+  const sections = Array.isArray(rawSections) ? rawSections.map((sec, idx) => {
+    let ts = sec.timestamp;
+    if (!ts || typeof ts !== 'string' || !ts.includes(':')) {
+      const startMin = idx * 3;
+      const endMin = (idx + 1) * 3;
+      ts = `${String(startMin).padStart(2, '0')}:00 - ${String(endMin).padStart(2, '0')}:00`;
+    }
+    return {
+      ...sec,
+      timestamp: ts,
+      startSeconds: parseTimestampToSeconds(ts)
+    };
+  }) : [];
+
   // Fallback to extract terms from sections if empty
-  const sections = notesData.sections || summaryData.sections || [];
   if (normalizedTerms.length === 0 && Array.isArray(sections)) {
     normalizedTerms = sections.map(s => s.heading).filter(Boolean);
   }

@@ -158,6 +158,8 @@ function App() {
       const result = await processLecture(content);
       const lectureId = `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       result.id = lectureId;
+      result.sourceType = isMedia ? 'media' : 'file';
+      result.sourceName = file.name;
       setDashboardData(result);
       setIsProcessingReady(true);
 
@@ -188,6 +190,9 @@ function App() {
       const result = await processLecture(transcriptText);
       const lectureId = `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       result.id = lectureId;
+      result.sourceType = meta?.type || 'web';
+      result.sourceUrl = meta?.url || null;
+      result.sourceName = meta?.name || 'Online Source';
       setDashboardData(result);
       setIsProcessingReady(true);
 

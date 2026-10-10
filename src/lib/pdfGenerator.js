@@ -136,7 +136,8 @@ export function generateLecturePDF(data) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(`* [${item.intentLevel || 'MUST-KNOW'}] ${item.topic}`, margin + 10, y);
+      const timeStr = item.timestamp ? ` [${item.timestamp}]` : '';
+      doc.text(`* [${item.intentLevel || 'MUST-KNOW'}] ${item.topic}${timeStr}`, margin + 10, y);
       y += 12;
 
       if (item.verbalCues) {
@@ -146,6 +147,37 @@ export function generateLecturePDF(data) {
         const cueLines = doc.splitTextToSize(`Instructor emphasis: "${item.verbalCues}"`, contentWidth - 28);
         doc.text(cueLines, margin + 20, y);
         y += cueLines.length * 11 + 4;
+      }
+    });
+
+    y += 10;
+  }
+
+  // 5.6 Teacher Warning Traps
+  if (data.teacherIntent && Array.isArray(data.teacherIntent.warningTraps) && data.teacherIntent.warningTraps.length > 0) {
+    checkPageBreak(50);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(217, 119, 6); // amber-600
+    doc.text('Teacher Warning Traps & Common Exam Pitfalls', margin, y);
+    y += 14;
+
+    data.teacherIntent.warningTraps.forEach((trap) => {
+      checkPageBreak(25);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      const trapTime = trap.timestamp ? ` [${trap.timestamp}]` : '';
+      doc.text(`* [PITFALL] ${trap.concept || 'Common Confusion'}${trapTime}`, margin + 10, y);
+      y += 12;
+
+      if (trap.warning) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(71, 85, 105);
+        const warningLines = doc.splitTextToSize(`Warning: ${trap.warning}`, contentWidth - 28);
+        doc.text(warningLines, margin + 20, y);
+        y += warningLines.length * 11 + 4;
       }
     });
 
@@ -170,7 +202,8 @@ export function generateLecturePDF(data) {
       doc.setFontSize(11.5);
       doc.setTextColor(15, 23, 42);
       const badgePrefix = section.intentBadge ? `[${section.intentBadge}] ` : '';
-      const headingText = `${idx + 1}. ${badgePrefix}${section.heading}`;
+      const timestampSuffix = section.timestamp ? ` [${section.timestamp}]` : '';
+      const headingText = `${idx + 1}. ${badgePrefix}${section.heading}${timestampSuffix}`;
       const headingLines = doc.splitTextToSize(headingText, contentWidth);
       doc.text(headingLines, margin, y);
       y += headingLines.length * 15 + 6;
