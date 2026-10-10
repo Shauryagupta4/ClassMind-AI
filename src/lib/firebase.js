@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCz-IZOs33oLMyugCAr9C1yEunms0JjdBg",
@@ -14,6 +14,15 @@ const firebaseConfig = {
 // Initialize Firebase safely
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const firebaseAuth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+
+/**
+ * Direct 1-Click Google Popup Sign In via Firebase
+ */
+export const signInWithFirebaseGoogle = async () => {
+  const result = await signInWithPopup(firebaseAuth, googleProvider);
+  return result.user;
+};
 
 /**
  * Setup Invisible or Visible reCAPTCHA verifier for Firebase Phone Auth

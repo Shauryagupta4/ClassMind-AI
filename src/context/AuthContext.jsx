@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, syncUserProfile } from '../lib/supabase';
-import { sendFirebasePhoneOtp, verifyFirebasePhoneOtp } from '../lib/firebase';
+import { sendFirebasePhoneOtp, verifyFirebasePhoneOtp, signInWithFirebaseGoogle } from '../lib/firebase';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext({});
@@ -82,19 +82,43 @@ export const AuthProvider = ({ children }) => {
 
   const signInWithGoogle = async () => {
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin
-        }
-      });
-      if (error) throw error;
-      return data;
-    } catch (err) {
-      console.warn("Google OAuth warning:", err);
-      // If Google OAuth isn't enabled in user's Supabase dashboard yet, offer graceful demo fallback
-      toast.error(err.message || 'Google Auth is initializing. Check Supabase OAuth provider settings.');
-      throw err;
+      // 1. Try Firebase Google Popup (Instant popup without page redirect)
+      const fbUser = await signInWithFirebaseGoogle();
+      if (fbUser) {
+        const userObj = {
+          id: fbUser.uid,
+          email: fbUser.email,
+          user_metadata: {
+            full_name: fbUser.displayName || fbUser.email?.split('@')[0],
+            avatar_url: fbUser.photoURL
+          }
+        };
+        setUser(userObj);
+        syncUserProfile(userObj);
+        toast.success(`Signed in as ${userObj.user_metadata.full_name || 'Scholar'}!`);
+        return userObj;
+      }
+    } catch (fbErr) {
+      console.warn("Firebase Google Auth:", fbErr.message);
+      // If user cancelled popup, return cleanly
+      if (fbErr.code === 'auth/popup-closed-by-user') {
+        return null;
+      }
+      
+      // 2. Fallback to Supabase OAuth redirect if Firebase provider isn't activated
+      try {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin
+          }
+        });
+        if (error) throw error;
+        return data;
+      } catch (sbErr) {
+        toast.error(fbErr.message || sbErr.message || 'Google Auth could not be completed');
+        throw sbErr;
+      }
     }
   };
 

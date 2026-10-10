@@ -47,7 +47,10 @@ export default function AuthModal({ isOpen, onClose }) {
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
-      await signInWithGoogle();
+      const res = await signInWithGoogle();
+      if (res) {
+        onClose();
+      }
     } catch (err) {
       console.error(err);
     } finally {
