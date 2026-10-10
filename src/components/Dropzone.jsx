@@ -1,20 +1,37 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, FileAudio, FolderOpen, AlertCircle } from 'lucide-react';
+import { Upload, FileAudio, FolderOpen, AlertCircle, Lock } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const MAX_MEDIA_SIZE = 25 * 1024 * 1024; // 25 MB limit for Groq Whisper
 
-const Dropzone = ({ onFileDrop }) => {
+const Dropzone = ({ onFileDrop, onRequireAuth }) => {
   const { theme, styles } = useTheme();
   const currentStyles = styles[theme];
+  const { user } = useAuth();
   const [isHovered, setIsHovered] = useState(false);
   const [file, setFile] = useState(null);
   const [sizeError, setSizeError] = useState(null);
   const fileInputRef = useRef(null);
 
+  const handleBrowseClick = (e) => {
+    if (e) e.stopPropagation();
+    if (!user) {
+      if (onRequireAuth) onRequireAuth();
+      toast('Please log in or continue as a Demo Student first!', { icon: '🔐' });
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
   const validateAndHandleFile = (selectedFile) => {
+    if (!user) {
+      if (onRequireAuth) onRequireAuth();
+      toast('Please log in or continue as a Demo Student first!', { icon: '🔐' });
+      return false;
+    }
     if (!selectedFile) return false;
     setSizeError(null);
 
@@ -52,6 +69,11 @@ const Dropzone = ({ onFileDrop }) => {
   const handleDrop = (e) => {
     e.preventDefault();
     setIsHovered(false);
+    if (!user) {
+      if (onRequireAuth) onRequireAuth();
+      toast('Please log in or continue as a Demo Student first!', { icon: '🔐' });
+      return;
+    }
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       validateAndHandleFile(e.dataTransfer.files[0]);
     }
@@ -80,9 +102,10 @@ const Dropzone = ({ onFileDrop }) => {
 
       {/* The container */}
       <motion.div
-        className={`relative group rounded-3xl border-4 border-dashed border-black bg-[#FFF0F5] shadow-[8px_8px_0px_#000] hover:shadow-[12px_12px_0px_#000] hover:-translate-y-1 p-10 transition-all duration-300 ${
+        className={`relative group rounded-3xl border-4 border-dashed border-black bg-[#FFF0F5] shadow-[8px_8px_0px_#000] hover:shadow-[12px_12px_0px_#000] hover:-translate-y-1 p-10 transition-all duration-300 cursor-pointer ${
           isHovered ? 'bg-[#FFE2EC]' : 'bg-[#FFF0F5]'
         }`}
+        onClick={handleBrowseClick}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -147,7 +170,7 @@ const Dropzone = ({ onFileDrop }) => {
               
               <button 
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={handleBrowseClick}
                 className={`${currentStyles.buttonClass} flex items-center gap-2`}
               >
                 <FolderOpen className="w-5 h-5" />

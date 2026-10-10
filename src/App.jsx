@@ -112,6 +112,11 @@ function App() {
 
   const handleFileDrop = async (file) => {
     if (!file) return;
+    if (!user) {
+      setIsAuthModalOpen(true);
+      toast('Please log in or continue as a Demo Student first!', { icon: '🔐' });
+      return;
+    }
 
     // Strict 25 MB limit for audio/video media (Groq Whisper requirement)
     const isMedia = file.type.startsWith('audio/') || 
@@ -161,6 +166,11 @@ function App() {
   };
 
   const handleTranscriptSubmit = async (transcriptText, meta) => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      toast('Please log in or continue as a Demo Student first!', { icon: '🔐' });
+      return;
+    }
     setSourceInfo(meta || { type: 'web', name: 'Online Source' });
     setIsProcessingReady(false);
     setAppState('processing');
@@ -275,9 +285,15 @@ function App() {
         {/* Dynamic Views */}
         {appState === 'upload' && (
           <div className="w-full flex flex-col items-center">
-            <Dropzone onFileDrop={handleFileDrop} />
+            <Dropzone 
+              onFileDrop={handleFileDrop} 
+              onRequireAuth={() => setIsAuthModalOpen(true)} 
+            />
             <div className="w-full max-w-2xl mt-4">
-              <YouTubeInput onTranscriptReady={handleTranscriptSubmit} />
+              <YouTubeInput 
+                onTranscriptReady={handleTranscriptSubmit} 
+                onRequireAuth={() => setIsAuthModalOpen(true)} 
+              />
             </div>
           </div>
         )}

@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Loader2, Video, Globe, Sparkles, AlertTriangle } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { fetchWebContent } from '../lib/tinyfish';
+import toast from 'react-hot-toast';
 
-const YouTubeInput = ({ onTranscriptReady }) => {
+const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
   const { theme, styles } = useTheme();
   const currentStyles = styles[theme];
+  const { user } = useAuth();
   
   const [mode, setMode] = useState('youtube'); // 'youtube' | 'web'
   const [url, setUrl] = useState('');
@@ -13,7 +16,17 @@ const YouTubeInput = ({ onTranscriptReady }) => {
   const [error, setError] = useState(null);
   const [disabledCaptionMeta, setDisabledCaptionMeta] = useState(null);
 
+  const checkAuth = () => {
+    if (!user) {
+      if (onRequireAuth) onRequireAuth();
+      toast('Please log in or continue as a Demo Student first!', { icon: '🔐' });
+      return false;
+    }
+    return true;
+  };
+
   const handleSynthesizeFromTopic = (topicName) => {
+    if (!checkAuth()) return;
     if (onTranscriptReady) {
       const promptText = `Educational and Technical Subject: ${topicName}\n\nPlease generate a master academic synthesis including structured revision notes, foundational principles, teacher's intent exam radar, and active-recall key terms based on this subject.`;
       onTranscriptReady(promptText, {
@@ -26,6 +39,7 @@ const YouTubeInput = ({ onTranscriptReady }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!checkAuth()) return;
     if (!url) return;
     setLoading(true);
     setError(null);
