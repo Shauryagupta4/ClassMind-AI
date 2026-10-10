@@ -7,7 +7,7 @@ import Navbar from './components/Navbar'
 import AuthModal from './components/AuthModal'
 import SavedLecturesModal from './components/SavedLecturesModal'
 import { processLecture, transcribeAudio } from './lib/ai'
-import { saveLecture, getUserLectures } from './lib/supabase'
+import { saveLecture } from './lib/supabase'
 import { useAuth } from './context/AuthContext'
 import toast, { Toaster } from 'react-hot-toast'
 import { useTheme } from './context/ThemeContext'
@@ -96,7 +96,6 @@ function App() {
   const [isProcessingReady, setIsProcessingReady] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [savedCount, setSavedCount] = useState(0);
 
   // Helper to cleanly reset back to home and wipe cached view
   const resetToHome = () => {
@@ -170,10 +169,7 @@ function App() {
     }
   }, [appState]);
 
-  // Sync count of saved lectures from Supabase / Local storage
-  useEffect(() => {
-    getUserLectures(user).then(list => setSavedCount(list?.length || 0));
-  }, [user]);
+
 
   const handleLoadLecture = (lecture) => {
     setDashboardData(lecture);
@@ -257,7 +253,6 @@ function App() {
       // Immediately persist to Supabase for the authenticated user
       saveLecture(result, user).then(() => {
         console.log("✅ Lecture successfully saved to Supabase:", result.title);
-        getUserLectures(user).then(list => setSavedCount(list?.length || 0));
       }).catch(err => {
         console.error("❌ Supabase save error:", err);
       });
@@ -290,7 +285,6 @@ function App() {
       // Immediately persist to Supabase for the authenticated user
       saveLecture(result, user).then(() => {
         console.log("✅ Lecture successfully saved to Supabase:", result.title);
-        getUserLectures(user).then(list => setSavedCount(list?.length || 0));
       }).catch(err => {
         console.error("❌ Supabase save error:", err);
       });
@@ -322,7 +316,6 @@ function App() {
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onOpenHistory={() => setIsHistoryModalOpen(true)}
         onResetHome={resetToHome}
-        savedCount={savedCount}
       />
 
       {/* Auth Modal (Login / Sign Up / Demo Student) */}
@@ -423,9 +416,7 @@ function App() {
               toast.success("Analysis complete! Saved to Revision Vault 📚");
               const toSave = finalData || dashboardData;
               if (toSave) {
-                saveLecture(toSave, user).then(() => {
-                  getUserLectures(user).then(list => setSavedCount(list?.length || 0));
-                });
+                saveLecture(toSave, user);
               }
             }}
             onCancel={() => {

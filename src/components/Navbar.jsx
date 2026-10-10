@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { BookOpen, User, LogOut, Sparkles, FolderArchive, Shield } from 'lucide-react';
 
-export default function Navbar({ onOpenAuth, onOpenHistory, onResetHome, savedCount = 0 }) {
+export default function Navbar({ onOpenAuth, onOpenHistory, onResetHome }) {
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -28,14 +28,10 @@ export default function Navbar({ onOpenAuth, onOpenHistory, onResetHome, savedCo
           <button
             onClick={onOpenHistory}
             className="px-3 md:px-4 py-2 rounded-xl bg-white border-2 border-black text-xs font-mono font-black uppercase tracking-wider text-black shadow-[2px_2px_0px_#000] hover:bg-[#FFF1C5] hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+            title="Open Revision Vault"
           >
             <FolderArchive className="w-4 h-4 text-black" />
             <span className="hidden sm:inline">Revision Vault</span>
-            {savedCount > 0 && (
-              <span className="px-1.5 py-0.2 bg-[#FFCCD5] border border-black rounded-full text-[10px]">
-                {savedCount}
-              </span>
-            )}
           </button>
 
           {/* User Profile / Auth Button */}
