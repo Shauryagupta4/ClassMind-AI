@@ -10,20 +10,28 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-const LOCAL_STORAGE_KEY = 'classmind_saved_lectures';
+function getStorageKeyForUser(user) {
+  if (!user || !user.id) return null;
+  const validUuid = ensureValidUuid(user.id);
+  return `classmind_saved_lectures_${validUuid}`;
+}
 
-function getLocalLectures() {
+function getLocalLectures(user = null) {
+  const key = getStorageKeyForUser(user);
+  if (!key) return [];
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
     return [];
   }
 }
 
-function setLocalLectures(list) {
+function setLocalLectures(list, user = null) {
+  const key = getStorageKeyForUser(user);
+  if (!key) return;
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
+    localStorage.setItem(key, JSON.stringify(list));
   } catch (e) {
     console.warn('LocalStorage save error:', e);
   }
@@ -112,10 +120,10 @@ export async function saveLecture(lectureData, user = null) {
     created_at: now
   };
 
-  // Always update local cache first
-  const localList = getLocalLectures().filter(item => item.id !== lectureId);
+  // Always update user-specific local cache first
+  const localList = getLocalLectures(user).filter(item => item.id !== lectureId);
   localList.unshift(localSnapshot);
-  setLocalLectures(localList.slice(0, 30));
+  setLocalLectures(localList.slice(0, 30), user);
 
   // Sync to normalized relational Supabase tables
   try {
@@ -205,23 +213,27 @@ export async function saveLecture(lectureData, user = null) {
  * Retrieves all saved lectures by querying relational tables (with fallback)
  */
 export async function getUserLectures(user = null) {
-  const localList = getLocalLectures();
+  // If not logged in, Revision Vault is strictly empty (0 lectures)
+  if (!user || !user.id) {
+    return [];
+  }
+
+  const validUuid = ensureValidUuid(user.id);
+  const localList = getLocalLectures(user);
 
   try {
-    let query = supabase.from('lectures').select(`
-      *,
-      teacher_intents (*),
-      lecture_sections (*),
-      quizzes (*),
-      flashcards (*)
-    `).order('created_at', { ascending: false }).limit(30);
-
-    if (user?.id) {
-      const validUuid = ensureValidUuid(user.id);
-      query = query.or(`user_id.eq.${validUuid},user_id.is.null`);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await supabase
+      .from('lectures')
+      .select(`
+        *,
+        teacher_intents (*),
+        lecture_sections (*),
+        quizzes (*),
+        flashcards (*)
+      `)
+      .eq('user_id', validUuid)
+      .order('created_at', { ascending: false })
+      .limit(30);
     if (!error && Array.isArray(data) && data.length > 0) {
       // Format relational rows into Dashboard-ready lecture objects
       const cloudFormatted = data.map(item => {
@@ -277,9 +289,9 @@ export async function getUserLectures(user = null) {
  * Deletes a lecture and its relational children (via cascade)
  */
 export async function deleteLecture(lectureId, user = null) {
-  // 1. Delete from local cache
-  const localList = getLocalLectures().filter(item => item.id !== lectureId);
-  setLocalLectures(localList);
+  // 1. Delete from user local cache
+  const localList = getLocalLectures(user).filter(item => item.id !== lectureId);
+  setLocalLectures(localList, user);
 
   // 2. Delete from Supabase
   try {

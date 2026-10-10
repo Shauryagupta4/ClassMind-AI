@@ -105,12 +105,20 @@ export default function SavedLecturesModal({ isOpen, onClose, onLoadLecture }) {
                 <RefreshCw className="w-8 h-8 text-black animate-spin mx-auto mb-3" />
                 <p className="text-sm font-bold text-zinc-600">Syncing lectures from database...</p>
               </div>
+            ) : !user ? (
+              <div className="text-center py-12 bg-white rounded-2xl border-3 border-dashed border-zinc-300 p-8">
+                <FolderArchive className="w-12 h-12 text-zinc-400 mx-auto mb-3" />
+                <h3 className="text-base font-black uppercase text-black mb-1">Please Sign In</h3>
+                <p className="text-xs text-zinc-600 font-bold max-w-sm mx-auto mb-4">
+                  Log in or continue with Google to view and sync your personal lecture vault.
+                </p>
+              </div>
             ) : lectures.length === 0 ? (
               <div className="text-center py-12 bg-white rounded-2xl border-3 border-dashed border-zinc-300 p-8">
                 <BookOpen className="w-12 h-12 text-zinc-400 mx-auto mb-3" />
                 <h3 className="text-base font-black uppercase text-black mb-1">No Saved Lectures Yet</h3>
                 <p className="text-xs text-zinc-600 font-bold max-w-sm mx-auto">
-                  Upload audio or paste a YouTube video link to generate your first exam-ready revision kit!
+                  Upload audio or paste a lecture link to generate your first revision kit for this account!
                 </p>
               </div>
             ) : (
