@@ -9,7 +9,7 @@ import toast, { Toaster } from 'react-hot-toast'
 import { useTheme } from './context/ThemeContext'
 
 const defaultBadges = [
-  { icon: '🌸', text: 'PASTEL BRUTAL' },
+  { icon: '🧠', text: 'EXAM RADAR' },
   { icon: '⚡', text: 'HIGH CONTRAST' },
   { icon: '✦', text: '1-CLICK PDF' },
   { icon: '✨', text: 'ZERO NOISE' },
@@ -225,7 +225,7 @@ function App() {
             <div className="inline-flex items-center gap-2 px-5 py-2 rounded-2xl bg-[#FFF1C5] border-4 border-black shadow-[4px_4px_0px_#000] mb-6 rotate-[-2deg] hover:rotate-0 transition-transform cursor-pointer">
               <Zap className="w-4 h-4 text-black fill-current" />
               <span className="text-xs font-mono font-black text-black uppercase tracking-wider">
-                PASTEL BRUTALISM // HYBRID SPEC
+                AUTONOMOUS EXAM STUDY ENGINE // MULTILINGUAL
               </span>
             </div>
             
@@ -233,8 +233,8 @@ function App() {
               ClassMind <span className="bg-[#FFCCD5] px-4 py-0.5 border-4 border-black shadow-[5px_5px_0px_#000] inline-block rotate-[1deg]">AI</span>
             </h1>
             
-            <p className="text-lg md:text-xl text-zinc-900 font-bold max-w-xl mx-auto leading-relaxed mt-4 bg-white p-3.5 rounded-2xl border-4 border-black shadow-[4px_4px_0px_#000]">
-              Raw Neo-Brutalist physical geometry infused with soft pastel aesthetics. Drop your lectures and get high-yield structured notes.
+            <p className="text-base md:text-lg text-zinc-900 font-bold max-w-xl mx-auto leading-relaxed mt-4 bg-white p-4 rounded-2xl border-4 border-black shadow-[4px_4px_0px_#000]">
+              Autonomous lecture intelligence engine. Transform classroom audio, YouTube lectures, and documents into high-yield exam summaries, teacher intent radars, interactive quizzes, and flashcards.
             </p>
           </div>
         )}

@@ -148,10 +148,10 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## 🎨 Design Philosophy
 
-ClassMind features a distinctive **Neo-Brutalist / Pastel Brutalist** design system:
+ClassMind features a distinctive **Neo-Brutalist High-Yield** design system:
 - High-contrast 3px/4px solid black borders (`border-black`)
 - Tactile hard-edge drop shadows (`shadow-[4px_4px_0px_#000]`)
-- Calibrated pastel palettes (Rose, Mint, Butter Yellow, Lilac)
+- Calibrated focus palettes (Rose, Mint, Butter Yellow, Lilac)
 - Interactive micro-animations powered by Framer Motion
 
 ---
