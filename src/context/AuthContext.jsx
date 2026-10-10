@@ -130,6 +130,11 @@ export const AuthProvider = ({ children }) => {
         toast.error('Google provider is not enabled in your Firebase Console! Please enable Google under Authentication -> Sign-in method.', { duration: 8000 });
         return null;
       }
+      if (fbErr.code === 'auth/unauthorized-domain') {
+        const domain = typeof window !== 'undefined' ? window.location.hostname : 'your-site.vercel.app';
+        toast.error(`Domain "${domain}" is not authorized in Firebase! Add "${domain}" to Firebase Console -> Authentication -> Settings -> Authorized Domains.`, { duration: 10000 });
+        return null;
+      }
       toast.error(fbErr.message || 'Google Auth failed');
       throw fbErr;
     }
