@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, syncUserProfile } from '../lib/supabase';
+import { sendFirebasePhoneOtp, verifyFirebasePhoneOtp } from '../lib/firebase';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext({});
@@ -97,41 +98,30 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const sendPhoneOtp = async (phone) => {
+  const sendPhoneOtp = async (phone, containerId = 'recaptcha-container') => {
+    const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
     try {
-      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
-      const { data, error } = await supabase.auth.signInWithOtp({
-        phone: formattedPhone
-      });
-      if (error) {
-        // If SMS provider (Twilio/MessageBird) is not configured in Supabase, provide fallback test OTP
-        console.warn("Supabase Phone OTP note:", error.message);
-        if (error.message.includes('SMS provider') || error.message.includes('not configured') || error.message.includes('provider')) {
-          // Generate a local mock OTP for frictionless hackathon demonstration
-          const mockOtp = '123456';
-          sessionStorage.setItem('classmind_mock_phone', formattedPhone);
-          sessionStorage.setItem('classmind_mock_otp', mockOtp);
-          toast.success(`OTP Sent to ${formattedPhone}! (Demo Mode: Use code 123456)`, { duration: 6000 });
-          return { success: true, mock: true, code: mockOtp };
-        }
-        throw error;
-      }
-      toast.success(`6-digit OTP sent to ${formattedPhone}!`);
-      return { success: true, data };
+      const confirmationResult = await sendFirebasePhoneOtp(formattedPhone, containerId);
+      toast.success(`SMS OTP sent to ${formattedPhone}! Check your phone messages.`);
+      return { success: true, confirmationResult };
     } catch (err) {
-      // If Supabase throws error because SMS gateway isn't connected
-      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
+      console.warn("Firebase Phone Auth error:", err);
+      // If project hits Firebase daily limit or SMS quota, provide smart fallback so presentation doesn't break
+      if (err.code === 'auth/quota-exceeded' || err.message?.includes('quota') || err.message?.includes('daily')) {
+        toast.error("Firebase daily 10-SMS limit reached. Switching to Simulated Gateway mode (Code: 123456).", { duration: 7000 });
+      } else {
+        toast.error(err.message || "Failed to send SMS via Firebase.");
+      }
       const mockOtp = '123456';
       sessionStorage.setItem('classmind_mock_phone', formattedPhone);
       sessionStorage.setItem('classmind_mock_otp', mockOtp);
-      toast.success(`SMS Gateway Simulated! Enter code 123456 to verify.`, { duration: 6000 });
       return { success: true, mock: true, code: mockOtp };
     }
   };
 
   const verifyPhoneOtp = async (phone, token) => {
+    const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
     try {
-      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
       const mockPhone = sessionStorage.getItem('classmind_mock_phone');
       const mockOtp = sessionStorage.getItem('classmind_mock_otp');
 
@@ -150,19 +140,19 @@ export const AuthProvider = ({ children }) => {
         return { user: phoneUser };
       }
 
-      const { data, error } = await supabase.auth.verifyOtp({
-        phone: formattedPhone,
-        token,
-        type: 'sms'
-      });
-      if (error) throw error;
-      if (data?.user) {
-        setUser(data.user);
-        syncUserProfile(data.user);
-      }
-      toast.success('Phone verified successfully!');
-      return data;
+      // Real Firebase OTP verification
+      const fbUser = await verifyFirebasePhoneOtp(token.trim());
+      const userObj = {
+        id: fbUser.uid,
+        phone: fbUser.phoneNumber || formattedPhone,
+        user_metadata: { full_name: `Phone User (${fbUser.phoneNumber || formattedPhone})` }
+      };
+      setUser(userObj);
+      syncUserProfile(userObj);
+      toast.success('Phone verified successfully via Firebase! Logged in.');
+      return { user: userObj };
     } catch (err) {
+      console.error(err);
       toast.error(err.message || 'Invalid or expired OTP code');
       throw err;
     }

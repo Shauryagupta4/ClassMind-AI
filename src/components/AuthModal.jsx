@@ -379,6 +379,9 @@ export default function AuthModal({ isOpen, onClose }) {
                     </div>
                   </div>
 
+                  {/* Firebase Invisible reCAPTCHA Anchor */}
+                  <div id="recaptcha-container" className="my-1"></div>
+
                   <button
                     type="submit"
                     disabled={loading}
