@@ -5,14 +5,13 @@
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Groq LPU](https://img.shields.io/badge/Groq-Inference%20Engine-F55036?logo=groq&logoColor=white)](https://groq.com/)
+[![TinyFish AI](https://img.shields.io/badge/TinyFish-Web%20%26%20Search%20Agent-0066FF?logo=target&logoColor=white)](https://tinyfish.ai/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS%204-38bdf8?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
 ---
 
 ## ⚡ Overview
 
-**ClassMind AI** is an autonomous, exam-oriented lecture comprehension and revision platform built for students and educators. Instead of relying on a single slow LLM prompt, ClassMind utilizes a **distributed parallel multi-worker architecture** over Groq LPUs alongside **Groq Whisper Turbo** to deliver lightning-fast, high-yield academic study kits in real time.
+**ClassMind AI** is an autonomous, exam-oriented lecture comprehension and revision platform built for students and educators. Instead of relying on a single slow LLM prompt, ClassMind utilizes a **distributed parallel multi-worker architecture** over Groq LPUs alongside **Groq Whisper Turbo** and **TinyFish Autonomous Web & Academic Search Agents** to deliver lightning-fast, high-yield academic study kits in real time.
 
 ---
 
@@ -54,40 +53,48 @@
 - Generates a beautifully formatted, multi-page revision PDF.
 - Includes Teacher Intent radar, guaranteed exam probables, glossary definitions, and complete detailed notes.
 
+### 7. 🌐 TinyFish Autonomous Web Crawling & Live Academic Discovery
+- **Autonomous Web & Syllabus Ingestion (`api.fetch.tinyfish.ai`)**: Paste any university lecture page, online syllabus, course blog, or Wikipedia article. TinyFish autonomously scrapes and cleans the content to markdown while bypassing anti-bot blockers and stripping web clutter.
+- **Live Academic Search Agent (`api.search.tinyfish.ai`)**: Automatically scours verified academic databases, university portals, and online references for the lecture's core topic to provide students with relevant supplementary study materials, past question papers, and syllabus reference links.
+- **Interactive In-Dashboard Search**: Students can run live queries directly within their lecture dashboard to discover external academic resources instantly.
+
 ---
 
 ## 🏗️ Architecture
 
 ```
-[Lecture Media / YouTube / Text]
+[Lecture Media / YouTube / Syllabus URL]
                │
-               ▼
-┌───────────────────────────────┐
-│     Ingestion & Validation    │
-│  - Pre-flight 25 MB Media Cap │
-│  - YouTube Multitrack Server  │
-└──────────────┬────────────────┘
-               │
-               ▼
-┌───────────────────────────────┐
-│     Groq Whisper Turbo STT    │
-│  (whisper-large-v3-turbo)     │
-└──────────────┬────────────────┘
-               │
-               ▼
+               ├─────────────────────────┐
+               ▼                         ▼
+┌───────────────────────────────┐ ┌───────────────────────────────┐
+│     Ingestion & Validation    │ │   TinyFish Web Crawler Agent  │
+│  - Pre-flight 25 MB Media Cap │ │  (api.fetch.tinyfish.ai)      │
+│  - YouTube Multitrack Server  │ │  - Clean Markdown Extractor   │
+└──────────────┬────────────────┘ └──────────────┬────────────────┘
+               │                                 │
+               ▼                                 │
+┌───────────────────────────────┐                 │
+│     Groq Whisper Turbo STT    │                 │
+│  (whisper-large-v3-turbo)     │                 │
+└──────────────┬────────────────┘                 │
+               │                                 │
+               ▼◄────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────┐
 │        Parallel Distributed Worker Pipeline             │
 ├─────────────┬─────────────┬──────────────┬──────────────┤
-│  Summary &  │ Structured  │  Quiz Studio │ 3D Flashcards│
-│ Teacher Tone│ Master Notes│   Worker     │    Worker    │
+│  Worker 1:  │  Worker 2:  │  Worker 3:   │  Worker 4:   │
+│  Summary &  │ Structured  │ Active Recall│3D Flashcards │
+│ Teacher Tone│ Master Notes│  Quiz Studio │    Deck      │
 └──────┬──────┴──────┬──────┴──────┬───────┴──────┬───────┘
        │             │             │              │
        └─────────────┴──────┬──────┴──────────────┘
                             ▼
-              ┌───────────────────────────┐
-              │ ClassMind Neo-Brutalist UI│
-              │  - Exam Intent Radar      │
+              ┌───────────────────────────┐◄─── [ TinyFish Academic ]
+              │ ClassMind Neo-Brutalist UI│     [    Search Agent   ]
+              │  - Exam Intent Radar      │     [api.search.tinyfish]
               │  - Active Recall Studio   │
+              │  - TinyFish Live Resources│
               │  - 1-Click PDF Generator  │
               └───────────────────────────┘
 ```
@@ -99,6 +106,7 @@
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (v18 or higher recommended)
 - [Groq API Key](https://console.groq.com/)
+- [TinyFish API Key](https://tinyfish.ai/) (Optional, for web crawling & academic search)
 
 ### 1. Clone the repository
 ```bash
@@ -117,7 +125,7 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-Add your Groq API keys:
+Add your API keys:
 ```env
 # Distributed Groq AI Keys (Can share one key or use multiple for higher rate limits)
 VITE_GROQ_SUMMARY_KEY=your_groq_api_key_here
@@ -125,6 +133,9 @@ VITE_GROQ_NOTES_KEY=your_groq_api_key_here
 VITE_GROQ_QUIZ_KEY=your_groq_api_key_here
 VITE_GROQ_FLASHCARDS_KEY=your_groq_api_key_here
 VITE_GROQ_WHISPER_KEY=your_groq_api_key_here
+
+# TinyFish Autonomous Web Agent API (Web Crawling & Academic Search)
+VITE_TINYFISH_API_KEY=your_tinyfish_api_key_here
 
 # Backend Transcript Server
 PORT=3001
