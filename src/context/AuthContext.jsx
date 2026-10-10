@@ -11,26 +11,30 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Check active session
+    // 1. Initial check from LocalStorage cache
+    const cachedUser = getCachedUser();
+    if (cachedUser) {
+      setUser(cachedUser);
+    }
+
+    // 2. Supabase session check
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      const activeUser = session?.user || getDemoUser();
-      setUser(activeUser);
       if (session?.user) {
+        setSession(session);
+        setUser(session.user);
+        setCachedUser(session.user);
         syncUserProfile(session.user);
       }
       setLoading(false);
     });
 
-    // 2. Listen for auth changes
+    // 3. Listen for Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
       if (session?.user) {
+        setSession(session);
         setUser(session.user);
+        setCachedUser(session.user);
         syncUserProfile(session.user);
-        localStorage.removeItem('classmind_demo_user');
-      } else {
-        setUser(getDemoUser());
       }
       setLoading(false);
     });
@@ -38,12 +42,26 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  function getDemoUser() {
+  function getCachedUser() {
     try {
+      const stored = localStorage.getItem('classmind_active_user');
+      if (stored) return JSON.parse(stored);
       const demo = localStorage.getItem('classmind_demo_user');
       return demo ? JSON.parse(demo) : null;
     } catch {
       return null;
+    }
+  }
+
+  function setCachedUser(userData) {
+    try {
+      if (userData) {
+        localStorage.setItem('classmind_active_user', JSON.stringify(userData));
+      } else {
+        localStorage.removeItem('classmind_active_user');
+      }
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -93,6 +111,7 @@ export const AuthProvider = ({ children }) => {
           }
         };
         setUser(userObj);
+        setCachedUser(userObj);
         syncUserProfile(userObj);
         toast.success(`Signed in as ${userObj.user_metadata.full_name || 'Scholar'}!`);
         return userObj;
@@ -168,6 +187,7 @@ export const AuthProvider = ({ children }) => {
         user_metadata: { full_name: `Phone User (${fbUser.phoneNumber || formattedPhone})` }
       };
       setUser(userObj);
+      setCachedUser(userObj);
       syncUserProfile(userObj);
       toast.success('Phone verified successfully via Firebase! Logged in.');
       return { user: userObj };
@@ -205,6 +225,7 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
       if (data?.user) {
         setUser(data.user);
+        setCachedUser(data.user);
         syncUserProfile(data.user);
       }
       toast.success('Email verified successfully! Welcome to ClassMind.');
@@ -224,6 +245,7 @@ export const AuthProvider = ({ children }) => {
     };
     localStorage.setItem('classmind_demo_user', JSON.stringify(demo));
     setUser(demo);
+    setCachedUser(demo);
     toast.success('Signed in as Demo Student! (Instant Hackathon Access)');
   };
 
@@ -234,6 +256,7 @@ export const AuthProvider = ({ children }) => {
       // Ignore
     }
     localStorage.removeItem('classmind_demo_user');
+    localStorage.removeItem('classmind_active_user');
     setUser(null);
     setSession(null);
     toast('Logged out', { icon: '👋' });
