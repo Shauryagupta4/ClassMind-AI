@@ -3,7 +3,7 @@ const SUMMARY_KEY = import.meta.env.VITE_GROQ_SUMMARY_KEY || import.meta.env.VIT
 const NOTES_KEY = import.meta.env.VITE_GROQ_NOTES_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
 const QUIZ_KEY = import.meta.env.VITE_GROQ_QUIZ_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
 const FLASHCARDS_KEY = import.meta.env.VITE_GROQ_FLASHCARDS_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
-const WHISPER_KEY = import.meta.env.VITE_GROQ_WHISPER_KEY || import.meta.env.VITE_GROQ_SUMMARY_KEY || "";
+const WHISPER_KEY = import.meta.env.VITE_GROQ_WHISPER_KEY || import.meta.env.VITE_GROQ_SUMMARY_KEY || import.meta.env.VITE_GROQ_API_KEY || "";
 
 const MODEL = import.meta.env.VITE_GROQ_MODEL || "qwen/qwen3.8-27b";
 
@@ -11,6 +11,11 @@ const MODEL = import.meta.env.VITE_GROQ_MODEL || "qwen/qwen3.8-27b";
  * Universal Groq Chat Completion caller with resilient model failover
  */
 async function callGroq(prompt, apiKey, options = {}) {
+  const cleanKey = (apiKey || "").trim();
+  if (!cleanKey) {
+    throw new Error("Missing Groq API Key! Please add VITE_GROQ_API_KEY in your Vercel Project Settings > Environment Variables, then Redeploy.");
+  }
+
   const primaryModel = options.model || MODEL;
   const modelsToTry = [...new Set([primaryModel, "llama-3.3-70b-versatile", "llama-3.1-8b-instant"])];
 
@@ -21,7 +26,7 @@ async function callGroq(prompt, apiKey, options = {}) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
+          "Authorization": `Bearer ${cleanKey}`
         },
         body: JSON.stringify({
           model: model,
@@ -54,6 +59,11 @@ export async function transcribeAudio(file, language = null) {
     throw new Error(`File size (${sizeMB} MB) exceeds Groq Whisper's 25 MB limit. Please compress the file or convert to audio (.mp3 / .m4a).`);
   }
 
+  const cleanWhisperKey = (WHISPER_KEY || "").trim();
+  if (!cleanWhisperKey) {
+    throw new Error("Missing Groq Whisper Key! Please add VITE_GROQ_WHISPER_KEY or VITE_GROQ_API_KEY in your Vercel Project Settings > Environment Variables, then Redeploy.");
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 75000); // 75s safety timeout
 
@@ -69,7 +79,7 @@ export async function transcribeAudio(file, language = null) {
     const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${WHISPER_KEY}`
+        "Authorization": `Bearer ${cleanWhisperKey}`
       },
       body: formData,
       signal: controller.signal
