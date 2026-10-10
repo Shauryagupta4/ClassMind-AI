@@ -198,70 +198,103 @@ function App() {
     ];
   }, [appState, dashboardData]);
 
-  const handleFileDrop = async (file) => {
-    if (!file) return;
+  const handleFileDrop = async (input) => {
+    if (!input) return;
+    const fileList = Array.isArray(input) ? input : [input];
+    if (fileList.length === 0) return;
+
     if (!user) {
       setIsAuthModalOpen(true);
       toast('Please log in or continue as a Demo Student first!', { icon: '🔐' });
       return;
     }
 
-    // Strict 25 MB limit for audio/video media (Groq Whisper requirement)
-    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif|tiff|heic)$/i.test(file.name);
-    const isMedia = file.type.startsWith('audio/') || 
-                    file.type.startsWith('video/') || 
-                    /\.(mp3|wav|m4a|ogg|aac|flac|mp4|webm|mkv|mov|avi)$/i.test(file.name);
-    const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
+    // Classify files by type
+    const images = fileList.filter(f => f.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif|tiff|heic)$/i.test(f.name));
+    const mediaFiles = fileList.filter(f => f.type.startsWith('audio/') || f.type.startsWith('video/') || /\.(mp3|wav|m4a|ogg|aac|flac|mp4|webm|mkv|mov|avi)$/i.test(f.name));
+    const docFiles = fileList.filter(f => !images.includes(f) && !mediaFiles.includes(f));
 
-    if (isMedia && file.size > MAX_SIZE) {
-      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-      toast.error(
-        `File is ${sizeMB} MB! Groq Whisper maximum size is 25 MB.\nPlease extract audio (.mp3 / .m4a), compress the video, or paste a YouTube link.`,
-        { duration: 7000 }
-      );
-      setAppState('upload');
-      return;
+    // Validate size for media files (25 MB limit for Groq Whisper)
+    const MAX_SIZE = 25 * 1024 * 1024;
+    for (const m of mediaFiles) {
+      if (m.size > MAX_SIZE) {
+        const sizeMB = (m.size / (1024 * 1024)).toFixed(1);
+        toast.error(
+          `"${m.name}" is ${sizeMB} MB! Groq Whisper maximum size is 25 MB.\nPlease extract audio (.mp3) or paste a YouTube link.`,
+          { duration: 7000 }
+        );
+        setAppState('upload');
+        return;
+      }
     }
 
-    setSourceInfo({ type: isImage ? 'image' : isMedia ? 'media' : 'file', name: file.name });
+    const isMulti = fileList.length > 1;
+    const combinedName = isMulti 
+      ? `${fileList.length} Files (${images.length ? images.length + ' Images ' : ''}${mediaFiles.length ? mediaFiles.length + ' Audio/Video ' : ''}${docFiles.length ? docFiles.length + ' Docs' : ''})`.trim()
+      : fileList[0].name;
+
+    const mainType = images.length > 0 && mediaFiles.length === 0 ? 'image' : mediaFiles.length > 0 ? 'media' : 'file';
+    setSourceInfo({ type: mainType, name: combinedName });
     setIsProcessingReady(false);
     setAppState('processing');
+
     try {
-      let content = '';
-      if (isImage) {
-        toast.loading("Scanning lecture whiteboard & notes with OCR Vision...", { id: 'ocr' });
+      const extractedSections = [];
+
+      // 1. Process all whiteboard / notes images via OCR Vision
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
+        toast.loading(`OCR Vision: Scanning whiteboard photo ${i + 1} of ${images.length}...`, { id: 'ocr' });
         try {
-          content = await extractTextFromImage(file, (percent, status) => {
-            toast.loading(`OCR Vision: ${status} (${percent}%)`, { id: 'ocr' });
+          const text = await extractTextFromImage(img, (percent, status) => {
+            toast.loading(`OCR [${i + 1}/${images.length}]: ${status} (${percent}%)`, { id: 'ocr' });
           });
-          toast.success("Text recognized from whiteboard photo!", { id: 'ocr' });
-        } catch (ocrErr) {
-          console.error("Image OCR error:", ocrErr);
-          toast.error(ocrErr.message || "Failed to extract text from image.", { id: 'ocr', duration: 7000 });
-          setAppState('upload');
-          return;
+          extractedSections.push(`### [Lecture Whiteboard / Notes Slide ${i + 1}: ${img.name}]\n${text}`);
+        } catch (imgErr) {
+          console.warn(`OCR error for ${img.name}:`, imgErr);
         }
-      } else if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.srt') || file.name.endsWith('.vtt')) {
-        content = await file.text();
-      } else if (isMedia) {
-        toast.loading("Transcribing lecture with Groq Whisper (Supports Hindi, English & all languages)...", { id: 'transcribe' });
-        try {
-          content = await transcribeAudio(file);
-          toast.success("Audio transcribed successfully!", { id: 'transcribe' });
-        } catch (transcribeErr) {
-          console.error("Audio transcription error:", transcribeErr);
-          toast.error(transcribeErr.message || "Failed to transcribe audio file.", { id: 'transcribe', duration: 7000 });
-          setAppState('upload');
-          return;
-        }
-      } else {
-        content = `Lecture file: ${file.name}\nPlease analyze and generate comprehensive revision notes, structured headings, and active-recall key terms based on this lecture topic: ${file.name.replace(/\.[^/.]+$/, "")}.`;
       }
-      const result = await processLecture(content);
+      if (images.length > 0) {
+        toast.success(`Scanned ${images.length} whiteboard image(s)!`, { id: 'ocr' });
+      }
+
+      // 2. Process all audio/video media via Groq Whisper
+      for (let i = 0; i < mediaFiles.length; i++) {
+        const media = mediaFiles[i];
+        toast.loading(`Transcribing audio ${i + 1} of ${mediaFiles.length} (${media.name})...`, { id: 'transcribe' });
+        try {
+          const transcript = await transcribeAudio(media);
+          extractedSections.push(`### [Audio / Video Segment ${i + 1}: ${media.name}]\n${transcript}`);
+        } catch (mediaErr) {
+          console.error(`Transcription error for ${media.name}:`, mediaErr);
+          toast.error(mediaErr.message || `Failed to transcribe ${media.name}`, { id: 'transcribe' });
+        }
+      }
+      if (mediaFiles.length > 0) {
+        toast.success(`Transcribed ${mediaFiles.length} recording(s)!`, { id: 'transcribe' });
+      }
+
+      // 3. Process text & document files
+      for (let i = 0; i < docFiles.length; i++) {
+        const doc = docFiles[i];
+        try {
+          const docText = await doc.text();
+          extractedSections.push(`### [Lecture Document ${i + 1}: ${doc.name}]\n${docText}`);
+        } catch (e) {
+          extractedSections.push(`Lecture topic: ${doc.name.replace(/\.[^/.]+$/, "")}`);
+        }
+      }
+
+      const compositeContent = extractedSections.join('\n\n');
+      if (!compositeContent || compositeContent.trim().length < 10) {
+        throw new Error("Could not extract enough readable content from the uploaded files. Please check file clarity.");
+      }
+
+      const result = await processLecture(compositeContent);
       const lectureId = `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       result.id = lectureId;
-      result.sourceType = isImage ? 'image' : isMedia ? 'media' : 'file';
-      result.sourceName = file.name;
+      result.sourceType = mainType;
+      result.sourceName = combinedName;
       setDashboardData(result);
       setIsProcessingReady(true);
 

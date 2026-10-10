@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, FileAudio, FolderOpen, AlertCircle, Camera, Image as ImageIcon } from 'lucide-react';
+import { Upload, FileAudio, FolderOpen, AlertCircle, Camera, Layers, FileText } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -12,7 +12,7 @@ const Dropzone = ({ onFileDrop, onRequireAuth }) => {
   const currentStyles = styles[theme];
   const { user } = useAuth();
   const [isHovered, setIsHovered] = useState(false);
-  const [file, setFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState(null);
   const [sizeError, setSizeError] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -26,34 +26,37 @@ const Dropzone = ({ onFileDrop, onRequireAuth }) => {
     fileInputRef.current?.click();
   };
 
-  const validateAndHandleFile = (selectedFile) => {
+  const validateAndHandleFiles = (filesList) => {
     if (!user) {
       if (onRequireAuth) onRequireAuth();
       toast('Please log in or continue as a Demo Student first!', { icon: '🔐' });
       return false;
     }
-    if (!selectedFile) return false;
+    if (!filesList || filesList.length === 0) return false;
     setSizeError(null);
 
-    const isMedia = selectedFile.type.startsWith('audio/') || 
-                    selectedFile.type.startsWith('video/') || 
-                    /\.(mp3|wav|m4a|ogg|aac|flac|mp4|webm|mkv|mov|avi)$/i.test(selectedFile.name);
+    // Validate size for each media file
+    for (const file of filesList) {
+      const isMedia = file.type.startsWith('audio/') || 
+                      file.type.startsWith('video/') || 
+                      /\.(mp3|wav|m4a|ogg|aac|flac|mp4|webm|mkv|mov|avi)$/i.test(file.name);
 
-    if (isMedia && selectedFile.size > MAX_MEDIA_SIZE) {
-      const sizeMB = (selectedFile.size / (1024 * 1024)).toFixed(1);
-      const errMsg = `File size is ${sizeMB} MB. Maximum allowed size for audio/video transcription is 25 MB.`;
-      setSizeError(errMsg);
-      toast.error(
-        `File is ${sizeMB} MB! Exceeds 25 MB limit for transcription.\nPlease compress the video, extract audio (.mp3), or use a YouTube link.`,
-        { duration: 7000 }
-      );
-      setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return false;
+      if (isMedia && file.size > MAX_MEDIA_SIZE) {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        const errMsg = `"${file.name}" is ${sizeMB} MB. Maximum allowed size for audio/video transcription is 25 MB.`;
+        setSizeError(errMsg);
+        toast.error(
+          `"${file.name}" exceeds 25 MB limit for transcription.\nPlease compress or use a YouTube link.`,
+          { duration: 7000 }
+        );
+        setSelectedFiles(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return false;
+      }
     }
 
-    setFile(selectedFile);
-    if (onFileDrop) setTimeout(() => onFileDrop(selectedFile), 500);
+    setSelectedFiles(filesList);
+    if (onFileDrop) setTimeout(() => onFileDrop(filesList), 500);
     return true;
   };
 
@@ -75,17 +78,18 @@ const Dropzone = ({ onFileDrop, onRequireAuth }) => {
       return;
     }
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      validateAndHandleFile(e.dataTransfer.files[0]);
+      validateAndHandleFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileInputChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      validateAndHandleFile(e.target.files[0]);
+      validateAndHandleFiles(Array.from(e.target.files));
     }
   };
 
-  const isSelectedImage = file?.type?.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif|heic)$/i.test(file?.name || '');
+  const singleFile = selectedFiles && selectedFiles.length === 1 ? selectedFiles[0] : null;
+  const isSingleImage = singleFile && (singleFile.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif|heic)$/i.test(singleFile.name));
 
   return (
     <motion.div
@@ -99,6 +103,7 @@ const Dropzone = ({ onFileDrop, onRequireAuth }) => {
         ref={fileInputRef} 
         onChange={handleFileInputChange} 
         accept="audio/*,video/*,image/*,.txt,.md,.srt,.vtt,.pdf,.png,.jpg,.jpeg,.webp" 
+        multiple
         className="hidden" 
       />
 
@@ -115,25 +120,45 @@ const Dropzone = ({ onFileDrop, onRequireAuth }) => {
         whileTap={{ scale: 0.98 }}
       >
         <div className="relative z-10 flex flex-col items-center text-center">
-          {file ? (
+          {selectedFiles && selectedFiles.length > 0 ? (
             <motion.div 
               initial={{ scale: 0 }} 
               animate={{ scale: 1 }} 
               className="flex flex-col items-center"
             >
               <div className="w-20 h-20 bg-[#FFCCD5] border-4 border-black rounded-3xl shadow-[4px_4px_0px_#000] flex items-center justify-center mb-6">
-                {isSelectedImage ? (
+                {selectedFiles.length > 1 ? (
+                  <Layers className="w-10 h-10 text-black animate-bounce" />
+                ) : isSingleImage ? (
                   <Camera className="w-10 h-10 text-black animate-pulse" />
                 ) : (
                   <FileAudio className="w-10 h-10 text-black" />
                 )}
               </div>
               <h3 className={`text-2xl font-black ${currentStyles.textPrimary} tracking-tight mb-2`}>
-                {file.name}
+                {selectedFiles.length > 1 ? `${selectedFiles.length} Lecture Files Selected` : singleFile.name}
               </h3>
-              <p className={`${currentStyles.accent} font-bold uppercase tracking-widest text-sm`}>
-                {isSelectedImage ? '📸 Whiteboard Photo Ready (OCR Vision)' : '⚡ Ready to Process'}
+              <p className={`${currentStyles.accent} font-bold uppercase tracking-widest text-sm mb-3`}>
+                {selectedFiles.length > 1 
+                  ? '⚡ Multi-File Ingestion Ready (Combined Synthesis)' 
+                  : isSingleImage 
+                  ? '📸 Whiteboard Photo Ready (OCR Vision)' 
+                  : '⚡ Ready to Process'}
               </p>
+              {selectedFiles.length > 1 && (
+                <div className="flex flex-wrap justify-center gap-1.5 max-w-md">
+                  {selectedFiles.slice(0, 4).map((f, i) => (
+                    <span key={i} className="px-2.5 py-0.5 rounded-lg bg-white border border-black text-[11px] font-mono font-bold truncate max-w-[150px]">
+                      {f.name}
+                    </span>
+                  ))}
+                  {selectedFiles.length > 4 && (
+                    <span className="px-2 py-0.5 rounded-lg bg-[#FFF1C5] border border-black text-[11px] font-mono font-bold">
+                      +{selectedFiles.length - 4} more
+                    </span>
+                  )}
+                </div>
+              )}
             </motion.div>
           ) : (
             <>
