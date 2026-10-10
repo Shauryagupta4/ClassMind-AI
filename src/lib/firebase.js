@@ -38,19 +38,23 @@ export const setupRecaptcha = (containerId = 'recaptcha-container') => {
     }
   }
 
-  // In Firebase v9/v10/v11 SDK:
-  // new RecaptchaVerifier(auth, containerIdOrElement, parameters)
+  // In Firebase Modular SDK:
+  // constructor(containerOrId, parameters, authExtern)
   const container = document.getElementById(containerId) || 'recaptcha-container';
 
-  window.recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, container, {
-    size: 'invisible',
-    callback: () => {
-      // reCAPTCHA solved
+  window.recaptchaVerifier = new RecaptchaVerifier(
+    container,
+    {
+      size: 'invisible',
+      callback: () => {
+        // reCAPTCHA solved
+      },
+      'expired-callback': () => {
+        console.warn("reCAPTCHA expired");
+      }
     },
-    'expired-callback': () => {
-      console.warn("reCAPTCHA expired");
-    }
-  });
+    firebaseAuth
+  );
 
   return window.recaptchaVerifier;
 };
