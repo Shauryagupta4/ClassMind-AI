@@ -83,6 +83,10 @@ async function getYouTubeMetadata(url) {
   return null;
 }
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', server: 'ClassMind Transcript Server' });
+});
+
 app.post('/api/transcript', async (req, res) => {
   try {
     const { url, lang } = req.body;
