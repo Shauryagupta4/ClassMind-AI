@@ -419,7 +419,15 @@ export const processLecture = async (transcript) => {
     keyTerms: normalizedTerms,
     comprehensiveGuide: notesData.comprehensiveGuide || "",
     cachedQuiz: quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 ? quizData : null,
-    cachedFlashcards: flashcardsData && Array.isArray(flashcardsData.flashcards) && flashcardsData.flashcards.length > 0 ? flashcardsData : null
+    cachedFlashcards: flashcardsData && Array.isArray(flashcardsData.flashcards) && flashcardsData.flashcards.length > 0 ? flashcardsData : null,
+    cachedMindMap: buildDeterministicMindMap({
+      title: summaryData.title || "Lecture Notes",
+      subject: summaryData.subject || "General Studies",
+      summary: summaryData.summary || "",
+      sections: sections,
+      teacherIntent: teacherIntent,
+      keyTerms: normalizedTerms
+    })
   };
 };
 
@@ -539,4 +547,271 @@ const getFallbackFlashcards = (lectureData) => {
     deckTitle: `${title} - Flashcard Deck`,
     flashcards: cards
   };
+};
+
+/**
+ * Counts total nodes recursively in a mind map tree
+ */
+function countNodes(node) {
+  if (!node) return 0;
+  let count = 1;
+  if (Array.isArray(node.children)) {
+    node.children.forEach(c => {
+      count += countNodes(c);
+    });
+  }
+  return count;
+}
+
+/**
+ * Recursively enriches an AI generated mind map tree with unique IDs, badges, and pastel palettes
+ */
+function enrichMindMapTree(node, lectureData, depth = 0, index = 0, parentColor = null) {
+  const pastelColors = [
+    '#FFCCD5', // Blush Rose
+    '#C7E9DE', // Mint
+    '#FFF1C5', // Buttercream
+    '#E8D7F1', // Lavender
+    '#BAE6FD', // Sky Blue
+    '#FFD7BA'  // Peach
+  ];
+
+  const nodeColor = depth === 0 
+    ? '#FFF1C5' 
+    : depth === 1 
+    ? pastelColors[index % pastelColors.length] 
+    : parentColor || pastelColors[index % pastelColors.length];
+
+  const id = `node-${depth}-${index}-${Math.random().toString(36).substr(2, 6)}`;
+
+  return {
+    id,
+    title: node.title || `Concept ${index + 1}`,
+    badge: node.badge || (depth === 0 ? (lectureData?.subject || 'CENTRAL HUB') : null),
+    description: node.description || node.details || '',
+    color: nodeColor,
+    isRoot: depth === 0,
+    depth,
+    children: Array.isArray(node.children) 
+      ? node.children.map((c, cIdx) => enrichMindMapTree(c, lectureData, depth + 1, cIdx, nodeColor))
+      : []
+  };
+}
+
+/**
+ * Builds a deterministic, guaranteed mind map tree from existing lecture sections and metadata
+ */
+export const buildDeterministicMindMap = (lectureData) => {
+  const title = lectureData?.title || "Central Lecture Topic";
+  const subject = lectureData?.subject || "General Studies";
+  const summary = lectureData?.summary || "";
+  const sections = Array.isArray(lectureData?.sections) ? lectureData.sections : [];
+  const teacherIntent = lectureData?.teacherIntent || {};
+  const keyTerms = Array.isArray(lectureData?.keyTerms) ? lectureData.keyTerms : [];
+
+  const pastelColors = [
+    '#FFCCD5', // Blush Rose
+    '#C7E9DE', // Mint
+    '#FFF1C5', // Buttercream
+    '#E8D7F1', // Lavender
+    '#BAE6FD', // Sky Blue
+    '#FFD7BA'  // Peach
+  ];
+
+  const root = {
+    id: 'root',
+    title: title,
+    badge: subject.toUpperCase(),
+    description: summary,
+    color: '#FFF1C5',
+    isRoot: true,
+    depth: 0,
+    children: []
+  };
+
+  // 1. Branches from lecture sections
+  sections.forEach((sec, sIdx) => {
+    const branchColor = pastelColors[sIdx % pastelColors.length];
+    const cleanBadge = sec.intentBadge 
+      ? sec.intentBadge.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').trim()
+      : `MODULE ${sIdx + 1}`;
+
+    const secNode = {
+      id: `sec-${sIdx}`,
+      title: sec.heading || `Core Topic ${sIdx + 1}`,
+      badge: cleanBadge,
+      teacherEmphasis: sec.teacherEmphasis || null,
+      description: sec.detailedContent || sec.points?.join('. ') || '',
+      color: branchColor,
+      depth: 1,
+      children: []
+    };
+
+    // Sub-branches from points
+    if (Array.isArray(sec.points)) {
+      sec.points.forEach((pt, pIdx) => {
+        let ptTitle = pt;
+        let ptDesc = '';
+        if (pt.includes(':')) {
+          const split = pt.split(':');
+          ptTitle = split[0].trim();
+          ptDesc = split.slice(1).join(':').trim();
+        } else if (pt.includes(' - ')) {
+          const split = pt.split(' - ');
+          ptTitle = split[0].trim();
+          ptDesc = split.slice(1).join(' - ').trim();
+        }
+
+        secNode.children.push({
+          id: `pt-${sIdx}-${pIdx}`,
+          title: ptTitle,
+          description: ptDesc || pt,
+          color: branchColor,
+          depth: 2,
+          children: []
+        });
+      });
+    }
+
+    root.children.push(secNode);
+  });
+
+  // 2. High-Yield Exam Topics Branch (if available)
+  if (Array.isArray(teacherIntent.highYieldTopics) && teacherIntent.highYieldTopics.length > 0) {
+    root.children.push({
+      id: 'exam-probables',
+      title: "Exam High-Yield Topics",
+      badge: "EXAM RADAR",
+      description: `Analysis of instructor vocal emphasis. Tone: ${teacherIntent.overallTone || 'Exam-Oriented'}`,
+      color: '#FFCCD5',
+      depth: 1,
+      children: teacherIntent.highYieldTopics.slice(0, 4).map((item, idx) => ({
+        id: `exam-topic-${idx}`,
+        title: item.topic,
+        badge: item.intentLevel || 'MUST-KNOW',
+        description: item.whyImportant || item.verbalCues || 'Crucial for exams.',
+        color: '#FFE4E6',
+        depth: 2,
+        children: []
+      }))
+    });
+  }
+
+  // 3. Warning Pitfalls & Traps Branch (if available)
+  if (Array.isArray(teacherIntent.warningTraps) && teacherIntent.warningTraps.length > 0) {
+    root.children.push({
+      id: 'warning-traps',
+      title: "Teacher Warning Traps",
+      badge: "PITFALLS",
+      description: "Critical areas where students commonly lose marks or confuse concepts.",
+      color: '#FEF3C7',
+      depth: 1,
+      children: teacherIntent.warningTraps.slice(0, 4).map((trap, idx) => ({
+        id: `trap-${idx}`,
+        title: trap.concept || `Pitfall #${idx + 1}`,
+        badge: "EXAM TRAP",
+        description: trap.warning || 'Alert flagged by teacher.',
+        color: '#FFFBEB',
+        depth: 2,
+        children: []
+      }))
+    });
+  }
+
+  // 4. Key Glossary Branch (if under 6 main branches)
+  if (keyTerms.length > 0 && root.children.length < 6) {
+    root.children.push({
+      id: 'key-glossary',
+      title: "Key Glossary Terms",
+      badge: "GLOSSARY",
+      description: "Fundamental terminology and academic definitions.",
+      color: '#E8D7F1',
+      depth: 1,
+      children: keyTerms.slice(0, 5).map((term, idx) => {
+        let tName = term;
+        let tDef = '';
+        if (typeof term === 'string' && term.includes(':')) {
+          const parts = term.split(':');
+          tName = parts[0].trim();
+          tDef = parts.slice(1).join(':').trim();
+        }
+        return {
+          id: `term-${idx}`,
+          title: tName,
+          description: tDef || `Key concept in ${title}`,
+          color: '#F3E8FF',
+          depth: 2,
+          children: []
+        };
+      })
+    });
+  }
+
+  return {
+    root,
+    totalNodes: countNodes(root)
+  };
+};
+
+/**
+ * Generates an interactive Mind Map tree using Groq AI with instant deterministic fallback
+ */
+export const generateMindMap = async (lectureData, forceRegenerate = false) => {
+  if (!forceRegenerate && lectureData?.cachedMindMap?.root) {
+    return lectureData.cachedMindMap;
+  }
+
+  const fallbackMap = buildDeterministicMindMap(lectureData);
+
+  try {
+    const prompt = `You are an elite educational cognitive psychologist and concept-mapping architect.
+Synthesize the lecture material into a hierarchical conceptual mind map tree.
+
+Lecture Material:
+Title: ${lectureData?.title || 'Lecture'}
+Subject: ${lectureData?.subject || 'General'}
+Summary: ${lectureData?.summary || ''}
+Sections: ${JSON.stringify((lectureData?.sections || []).map(s => ({ heading: s.heading, points: s.points, intent: s.intentBadge })))}
+
+Format strictly in JSON:
+{
+  "root": {
+    "title": "Central Topic Title",
+    "badge": "MAIN THEME",
+    "description": "Concise 1-sentence essence",
+    "children": [
+      {
+        "title": "Pillar / Core Module Name",
+        "badge": "CORE MECHANISM | MUST-KNOW | FOUNDATIONAL",
+        "description": "Comprehensive explanation of this pillar",
+        "children": [
+          {
+            "title": "Key Concept / Law / Mechanism",
+            "description": "Detailed theoretical mechanics, formulas, or rules",
+            "children": [
+              {
+                "title": "Application or Practical Case",
+                "description": "Concrete example or common exam trap"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}`;
+
+    const aiRes = await callGroq(prompt, NOTES_KEY);
+    if (aiRes && aiRes.root && Array.isArray(aiRes.root.children) && aiRes.root.children.length > 0) {
+      const enrichedRoot = enrichMindMapTree(aiRes.root, lectureData);
+      return {
+        root: enrichedRoot,
+        totalNodes: countNodes(enrichedRoot)
+      };
+    }
+  } catch (err) {
+    console.warn("AI mind map synthesis failed, deploying structured fallback:", err);
+  }
+
+  return fallbackMap;
 };

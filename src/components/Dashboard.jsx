@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, ListChecks, Brain, Sparkles, FileText, ArrowLeft, Layers, CheckCircle2, Clock, ExternalLink } from 'lucide-react';
+import { BookOpen, ListChecks, Brain, Sparkles, FileText, ArrowLeft, Layers, CheckCircle2, Clock, ExternalLink, Network } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { generateQuiz, generateFlashcards } from '../lib/ai';
+import { generateQuiz, generateFlashcards, generateMindMap } from '../lib/ai';
 import QuizModal from './QuizModal';
 import FlashcardModal from './FlashcardModal';
+import MindMapModal from './MindMapModal';
 import TinyFishAcademicResources from './TinyFishAcademicResources';
 import TeacherIntentRadar from './TeacherIntentRadar';
 import { generateLecturePDF } from '../lib/pdfGenerator';
@@ -23,6 +24,11 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
   const [isFlashcardsOpen, setIsFlashcardsOpen] = useState(false);
   const [flashcardsData, setFlashcardsData] = useState(data?.cachedFlashcards || null);
   const [loadingFlashcards, setLoadingFlashcards] = useState(false);
+
+  // Mind Map State
+  const [isMindMapOpen, setIsMindMapOpen] = useState(false);
+  const [mindMapData, setMindMapData] = useState(data?.cachedMindMap || null);
+  const [loadingMindMap, setLoadingMindMap] = useState(false);
 
   // Normalize keyTerms to ensure they always show reliably
   const rawTerms = data?.keyTerms || data?.key_terms || data?.keyterms || data?.keywords || data?.terms || [];
@@ -86,6 +92,46 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
     }
   };
 
+  const handleOpenMindMap = async () => {
+    setIsMindMapOpen(true);
+    if (!mindMapData) {
+      if (data?.cachedMindMap) {
+        setMindMapData(data.cachedMindMap);
+        return;
+      }
+      setLoadingMindMap(true);
+      try {
+        const generated = await generateMindMap(data);
+        setMindMapData(generated);
+        if (onLectureUpdated) {
+          onLectureUpdated({ ...data, cachedMindMap: generated });
+        }
+      } catch (err) {
+        console.error("Mind map generation error:", err);
+        toast.error("Failed to generate mind map");
+      } finally {
+        setLoadingMindMap(false);
+      }
+    }
+  };
+
+  const handleRegenerateMindMap = async () => {
+    setLoadingMindMap(true);
+    try {
+      const regenerated = await generateMindMap(data, true);
+      setMindMapData(regenerated);
+      if (onLectureUpdated) {
+        onLectureUpdated({ ...data, cachedMindMap: regenerated });
+      }
+      toast.success("AI Concept Mind Map re-synthesized!");
+    } catch (err) {
+      console.error("Mind map regeneration error:", err);
+      toast.error("Failed to re-synthesize mind map");
+    } finally {
+      setLoadingMindMap(false);
+    }
+  };
+
   const handleDownloadPDF = () => {
     try {
       generateLecturePDF({
@@ -122,8 +168,16 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
           </div>
         </div>
         
-        {/* Navigation Action */}
-        <div>
+        {/* Navigation Actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button 
+            onClick={handleOpenMindMap}
+            className="px-4 py-2 rounded-2xl text-xs font-black text-black bg-[#C7E9DE] border-2 border-black shadow-[2px_2px_0px_#000] hover:bg-[#b0ded2] hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Launch Interactive Concept Mind Map"
+          >
+            <Network className="w-4 h-4 text-black" />
+            <span>Mind Map 🧠</span>
+          </button>
           <button 
             onClick={onReset}
             className="px-4 py-2 rounded-2xl text-xs font-bold text-zinc-900 bg-white border-2 border-black shadow-[2px_2px_0px_#000] hover:bg-zinc-100 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center gap-1.5 cursor-pointer"
@@ -280,8 +334,17 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
             </div>
           </div>
 
-          {/* Interactive Learning Tools (Flashcards & Quiz) */}
+          {/* Interactive Learning Tools (Mind Map, Flashcards & Quiz) */}
           <div className="space-y-3">
+            {/* Interactive Concept Mind Map Button */}
+            <button 
+              onClick={handleOpenMindMap}
+              className="w-full py-4 px-5 rounded-2xl text-xs md:text-sm font-black uppercase tracking-wider bg-[#C7E9DE] text-black border-4 border-black shadow-[4px_4px_0px_#000] hover:bg-[#aee0d4] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Network className="w-4 h-4 text-black" />
+              <span>Interactive Concept Mind Map 🧠 →</span>
+            </button>
+
             {/* Interactive Flashcards 3D Deck Button */}
             <button 
               onClick={handleGenerateFlashcards}
@@ -340,6 +403,16 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
         flashcardsData={flashcardsData}
         loading={loadingFlashcards}
         onRetry={handleRetryFlashcards}
+      />
+
+      {/* Interactive Concept Mind Map Studio Modal */}
+      <MindMapModal 
+        isOpen={isMindMapOpen}
+        onClose={() => setIsMindMapOpen(false)}
+        lectureData={data}
+        mindMapData={mindMapData}
+        loading={loadingMindMap}
+        onRegenerate={handleRegenerateMindMap}
       />
     </motion.div>
   );
