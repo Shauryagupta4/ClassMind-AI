@@ -27,7 +27,7 @@ export const signInWithFirebaseGoogle = async () => {
 /**
  * Setup Invisible or Visible reCAPTCHA verifier for Firebase Phone Auth
  */
-export const setupRecaptcha = (containerId = 'recaptcha-container') => {
+export const setupRecaptcha = (containerId = 'recaptcha-global-container') => {
   if (typeof window === 'undefined') return null;
   
   if (window.recaptchaVerifier) {
@@ -38,9 +38,13 @@ export const setupRecaptcha = (containerId = 'recaptcha-container') => {
     }
   }
 
-  // In Firebase Modular SDK:
-  // constructor(containerOrId, parameters, authExtern)
-  const container = document.getElementById(containerId) || 'recaptcha-container';
+  // Ensure DOM container element exists reliably
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    document.body.appendChild(container);
+  }
 
   window.recaptchaVerifier = new RecaptchaVerifier(
     container,
