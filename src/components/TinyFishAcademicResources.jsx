@@ -55,10 +55,10 @@ export default function TinyFishAcademicResources({ topic, keyTerms = [] }) {
           </div>
           <h3 className={`text-2xl font-black ${currentStyles.textPrimary} tracking-tight flex items-center gap-2`}>
             <BookOpen className={`w-6 h-6 ${currentStyles.accent}`} />
-            Live Academic Questions & Past Papers
+            Curated Academic Resources & Web References
           </h3>
           <p className={`text-sm ${currentStyles.textSecondary} mt-1`}>
-            TinyFish scours real university databases, Quizlet, and syllabus portals to find verified exam questions for this lecture.
+            TinyFish scours verified academic databases, university portals, and online references to discover curated study materials and guides for this lecture.
           </p>
         </div>
 
@@ -79,7 +79,7 @@ export default function TinyFishAcademicResources({ topic, keyTerms = [] }) {
           <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${currentStyles.textSecondary}`} />
           <input
             type="text"
-            placeholder={`Ask TinyFish to find more past papers or topics (e.g. "${topic} Calvin cycle MCQ")`}
+            placeholder={`Search for extra reference notes, syllabus guides, or topics (e.g. "${topic} study guide")`}
             value={customQuery}
             onChange={(e) => setCustomQuery(e.target.value)}
             className={`w-full pl-10 pr-4 py-2.5 text-sm ${currentStyles.inputClass} transition-all duration-200`}
