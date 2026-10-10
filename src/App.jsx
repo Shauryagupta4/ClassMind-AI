@@ -69,11 +69,12 @@ const extractTopicWords = (data) => {
 function App() {
   const { theme, styles } = useTheme();
   const currentStyles = styles[theme] || styles.pastelBrutal;
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const wasLoggedInRef = React.useRef(false);
   
   const [dashboardData, setDashboardData] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('classmind_active_lecture');
+      const saved = localStorage.getItem('classmind_active_lecture') || sessionStorage.getItem('classmind_active_lecture');
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -82,8 +83,8 @@ function App() {
 
   const [appState, setAppState] = useState(() => {
     try {
-      const savedState = sessionStorage.getItem('classmind_app_state');
-      const savedLecture = sessionStorage.getItem('classmind_active_lecture');
+      const savedState = localStorage.getItem('classmind_app_state') || sessionStorage.getItem('classmind_app_state');
+      const savedLecture = localStorage.getItem('classmind_active_lecture') || sessionStorage.getItem('classmind_active_lecture');
       if (savedState === 'dashboard' && savedLecture) {
         return 'dashboard';
       }
@@ -102,26 +103,38 @@ function App() {
     setAppState('upload');
     setDashboardData(null);
     try {
+      localStorage.removeItem('classmind_active_lecture');
+      localStorage.setItem('classmind_app_state', 'upload');
+      localStorage.removeItem('classmind_scroll_y');
       sessionStorage.removeItem('classmind_active_lecture');
       sessionStorage.setItem('classmind_app_state', 'upload');
       sessionStorage.removeItem('classmind_scroll_y');
     } catch (e) {}
   };
 
-  // If user logs out while on dashboard/resources, immediately return to home upload screen
+  // Only trigger resetToHome when user explicitly transitions from logged-in -> logged-out.
+  // Never trigger during initial auth resolution on page load / Ctrl+R refresh!
   useEffect(() => {
-    if (!user && appState === 'dashboard') {
+    if (user) {
+      wasLoggedInRef.current = true;
+    } else if (wasLoggedInRef.current && !loading && appState === 'dashboard') {
       resetToHome();
+      wasLoggedInRef.current = false;
     }
-  }, [user]);
+  }, [user, loading, appState]);
 
-  // Sync active lecture and view state to sessionStorage so page refresh stays on the current view
+  // Sync active lecture and view state to storage so page refresh stays on the current view
   useEffect(() => {
     try {
       if (appState === 'dashboard' && dashboardData) {
+        const serialized = JSON.stringify(dashboardData);
+        localStorage.setItem('classmind_app_state', 'dashboard');
+        localStorage.setItem('classmind_active_lecture', serialized);
         sessionStorage.setItem('classmind_app_state', 'dashboard');
-        sessionStorage.setItem('classmind_active_lecture', JSON.stringify(dashboardData));
+        sessionStorage.setItem('classmind_active_lecture', serialized);
       } else if (appState === 'upload') {
+        localStorage.setItem('classmind_app_state', 'upload');
+        localStorage.removeItem('classmind_active_lecture');
         sessionStorage.setItem('classmind_app_state', 'upload');
         sessionStorage.removeItem('classmind_active_lecture');
       }
@@ -134,7 +147,9 @@ function App() {
   useEffect(() => {
     const handleScroll = () => {
       if (appState === 'dashboard') {
-        sessionStorage.setItem('classmind_scroll_y', String(window.scrollY));
+        const yStr = String(window.scrollY);
+        localStorage.setItem('classmind_scroll_y', yStr);
+        sessionStorage.setItem('classmind_scroll_y', yStr);
       }
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
@@ -143,7 +158,7 @@ function App() {
 
   useEffect(() => {
     if (appState === 'dashboard') {
-      const savedY = sessionStorage.getItem('classmind_scroll_y');
+      const savedY = localStorage.getItem('classmind_scroll_y') || sessionStorage.getItem('classmind_scroll_y');
       if (savedY) {
         const y = parseInt(savedY, 10);
         if (!isNaN(y) && y > 0) {
