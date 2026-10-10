@@ -61,27 +61,64 @@ export function ensureValidUuid(str) {
  */
 export async function syncUserProfile(user) {
   if (!user || (!user.id && !user.email)) return null;
-  const validUuid = ensureValidUuid(user.id);
-  const fullName = user.user_metadata?.full_name || user.displayName || user.email?.split('@')[0] || 'Student';
+  const email = user.email || (user.phone ? `${user.phone.replace(/\D/g, '')}@classmind.ai` : null);
+  const fullName = user.user_metadata?.full_name || user.displayName || email?.split('@')[0] || (user.phone ? `Phone User (${user.phone})` : 'Student');
 
+  // 1. Primary: sync via backend endpoint with Supabase service credentials (creates user in auth.users + profiles)
+  try {
+    const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+    const resp = await fetch(`${serverUrl}/api/sync-profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: user.id,
+        email: email,
+        fullName: fullName,
+        role: 'student'
+      })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data?.profile) {
+        console.log('✅ User profile successfully synchronized to Supabase profiles table:', data.profile);
+        if (data.profile.id) {
+          user.supabase_id = data.profile.id;
+          try {
+            const currentCache = localStorage.getItem('classmind_active_user');
+            if (currentCache) {
+              const parsed = JSON.parse(currentCache);
+              parsed.supabase_id = data.profile.id;
+              localStorage.setItem('classmind_active_user', JSON.stringify(parsed));
+            }
+          } catch (e) {}
+        }
+        return data.profile;
+      }
+    }
+  } catch (err) {
+    console.warn('Backend sync-profile notice, falling back to direct client upsert:', err.message);
+  }
+
+  // 2. Direct client-side upsert fallback
+  const validUuid = user.supabase_id || ensureValidUuid(user.id);
   try {
     const { data, error } = await supabase
       .from('profiles')
       .upsert({
         id: validUuid,
-        email: user.email || `${validUuid}@classmind.ai`,
+        email: email || `${validUuid}@classmind.ai`,
         full_name: fullName,
         role: 'student',
         updated_at: new Date().toISOString()
       }, { onConflict: 'id' })
       .select();
 
-    if (error) {
-      console.warn('Profiles table sync notice:', error.message);
-    } else {
+    if (!error) {
       console.log('✅ User profile successfully synchronized to Supabase:', fullName);
+      return data?.[0] || null;
+    } else {
+      console.warn('Direct profiles upsert notice:', error.message);
     }
-    return data?.[0] || null;
   } catch (err) {
     // Graceful fallback
   }
@@ -112,7 +149,7 @@ export async function saveLecture(lectureData, user = null) {
     } catch (e) {}
   }
 
-  const validUserUuid = activeUser?.id ? ensureValidUuid(activeUser.id) : null;
+  const validUserUuid = activeUser?.supabase_id || (activeUser?.id ? ensureValidUuid(activeUser.id) : null);
   const userEmail = activeUser?.email || (activeUser?.phone ? `${activeUser.phone}@classmind.ai` : 'student@classmind.ai');
 
   // Local snapshot object for immediate zero-latency client use
@@ -245,7 +282,7 @@ export async function getUserLectures(user = null) {
     return [];
   }
 
-  const validUuid = ensureValidUuid(activeUser.id);
+  const validUuid = activeUser?.supabase_id || ensureValidUuid(activeUser.id);
   const localList = getLocalLectures(activeUser);
 
   try {

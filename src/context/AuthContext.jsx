@@ -246,6 +246,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('classmind_demo_user', JSON.stringify(demo));
     setUser(demo);
     setCachedUser(demo);
+    syncUserProfile(demo);
     toast.success('Signed in as Demo Student! (Instant Hackathon Access)');
   };
 

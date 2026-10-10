@@ -1,10 +1,33 @@
+import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
 import { YoutubeTranscript } from 'youtube-transcript';
+import { createClient } from '@supabase/supabase-js';
+
+try {
+  if (fs.existsSync('.env')) {
+    const lines = fs.readFileSync('.env', 'utf-8').split('\n');
+    lines.forEach(l => {
+      const idx = l.indexOf('=');
+      if (idx > 0 && !l.startsWith('#')) {
+        const k = l.slice(0, idx).trim();
+        const v = l.slice(idx + 1).trim();
+        if (k && !process.env[k]) process.env[k] = v;
+      }
+    });
+  }
+} catch (e) {}
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const supabaseSecret = process.env.SUPABASE_SECRET_KEY || '';
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseSecret, {
+  auth: { autoRefreshToken: false, persistSession: false }
+});
 
 /**
  * Decodes escaped XML / HTML entities from YouTube caption output
@@ -84,7 +107,80 @@ async function getYouTubeMetadata(url) {
 }
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', server: 'ClassMind Transcript Server' });
+  res.json({ status: 'ok', server: 'ClassMind Server' });
+});
+
+/**
+ * Ensures user exists in Supabase auth.users and synchronizes to 'profiles' table
+ */
+app.post('/api/sync-profile', async (req, res) => {
+  try {
+    const { id, email, fullName, role = 'student' } = req.body;
+    if (!email && !id) {
+      return res.status(400).json({ error: 'Email or User ID is required' });
+    }
+
+    const effectiveEmail = (email || `${id}@classmind.ai`).toLowerCase().trim();
+    const effectiveName = fullName || effectiveEmail.split('@')[0] || 'Student';
+
+    // 1. Check if user already exists in auth.users
+    let supaUserId = null;
+    const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+    const existing = listData?.users?.find(u => 
+      (effectiveEmail && u.email?.toLowerCase() === effectiveEmail) || 
+      (id && u.id === id)
+    );
+
+    if (existing) {
+      supaUserId = existing.id;
+    } else {
+      // Create user in auth.users via admin client
+      const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: effectiveEmail,
+        email_confirm: true,
+        user_metadata: { full_name: effectiveName }
+      });
+      if (createErr) {
+        console.warn('Admin createUser notice:', createErr.message);
+        // Fallback: search again
+        const retryList = await supabaseAdmin.auth.admin.listUsers();
+        const found = retryList.data?.users?.find(u => u.email?.toLowerCase() === effectiveEmail);
+        if (found) supaUserId = found.id;
+      } else {
+        supaUserId = created?.user?.id;
+      }
+    }
+
+    if (!supaUserId) {
+      return res.status(500).json({ error: 'Could not create or find auth user in Supabase' });
+    }
+
+    // 2. Upsert into profiles table with valid auth.users UUID
+    const { data: profileData, error: profileErr } = await supabaseAdmin
+      .from('profiles')
+      .upsert({
+        id: supaUserId,
+        email: effectiveEmail,
+        full_name: effectiveName,
+        role: role,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' })
+      .select();
+
+    if (profileErr) {
+      console.error('Admin profile upsert error:', profileErr.message);
+      return res.status(500).json({ error: profileErr.message });
+    }
+
+    console.log(`✅ Profile synchronized in Supabase profiles table for: ${effectiveEmail} (${supaUserId})`);
+    return res.json({
+      success: true,
+      profile: profileData?.[0] || { id: supaUserId, email: effectiveEmail, full_name: effectiveName }
+    });
+  } catch (err) {
+    console.error('Server sync-profile error:', err);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/transcript', async (req, res) => {
