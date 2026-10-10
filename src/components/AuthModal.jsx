@@ -194,14 +194,14 @@ export default function AuthModal({ isOpen, onClose }) {
             </p>
           </div>
 
-          {/* 1-Click Demo Button for Judges */}
+          {/* 1-Click Demo Button */}
           <button
             type="button"
             onClick={handleDemoAccess}
             className="w-full mb-3.5 py-3 px-4 rounded-2xl bg-[#C7E9DE] text-black font-black text-xs md:text-sm uppercase tracking-wider border-3 border-black shadow-[3px_3px_0px_#000] hover:bg-[#b2e0d3] hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-emerald-600 fill-current animate-bounce" />
-            <span>⚡ 1-Click Instant Demo Login (For Judges)</span>
+            <span>⚡ 1-Click Instant Demo Login</span>
           </button>
 
           {/* Google Sign In Button */}
