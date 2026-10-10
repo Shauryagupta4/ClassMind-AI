@@ -30,24 +30,48 @@ function setLocalLectures(list) {
 }
 
 /**
+ * Converts any user ID string (Firebase, Demo, OAuth) into a valid RFC 4122 UUID for PostgreSQL
+ */
+export function ensureValidUuid(str) {
+  if (!str) return null;
+  // If already standard 8-4-4-4-12 UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(str)) return str;
+
+  // Generate deterministic RFC 4122 compliant UUID hash from string
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(32, '0');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
  * Creates or updates user profile in 'profiles' table
  */
 export async function syncUserProfile(user) {
-  if (!user || !user.id) return null;
+  if (!user || (!user.id && !user.email)) return null;
+  const validUuid = ensureValidUuid(user.id);
+  const fullName = user.user_metadata?.full_name || user.displayName || user.email?.split('@')[0] || 'Student';
+
   try {
     const { data, error } = await supabase
       .from('profiles')
       .upsert({
-        id: user.id,
-        email: user.email,
-        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Student',
+        id: validUuid,
+        email: user.email || `${validUuid}@classmind.ai`,
+        full_name: fullName,
         role: 'student',
         updated_at: new Date().toISOString()
-      })
+      }, { onConflict: 'id' })
       .select();
 
     if (error) {
       console.warn('Profiles table sync notice:', error.message);
+    } else {
+      console.log('✅ User profile successfully synchronized to Supabase:', fullName);
     }
     return data?.[0] || null;
   } catch (err) {
@@ -69,11 +93,12 @@ export async function saveLecture(lectureData, user = null) {
 
   const lectureId = lectureData.id || `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = new Date().toISOString();
+  const validUserUuid = user?.id ? ensureValidUuid(user.id) : null;
 
   // Local snapshot object for immediate zero-latency client use
   const localSnapshot = {
     id: lectureId,
-    user_id: user?.id || null,
+    user_id: validUserUuid,
     user_email: user?.email || 'guest@classmind.ai',
     title: lectureData.title,
     subject: lectureData.subject || 'General Academic',
@@ -99,7 +124,7 @@ export async function saveLecture(lectureData, user = null) {
       .from('lectures')
       .upsert({
         id: lectureId,
-        user_id: user?.id || null,
+        user_id: validUserUuid,
         title: localSnapshot.title,
         subject: localSnapshot.subject,
         summary: localSnapshot.summary,
@@ -111,6 +136,7 @@ export async function saveLecture(lectureData, user = null) {
       console.warn("Table 'lectures' sync notice:", lectureError.message);
       return localSnapshot;
     }
+    console.log("✅ Lecture successfully stored in Supabase 'lectures' table:", lectureId);
 
     // Table 2: teacher_intents (Pedagogical Tone & Exam Probables)
     if (lectureData.teacherIntent) {
@@ -191,7 +217,8 @@ export async function getUserLectures(user = null) {
     `).order('created_at', { ascending: false }).limit(30);
 
     if (user?.id) {
-      query = query.eq('user_id', user.id);
+      const validUuid = ensureValidUuid(user.id);
+      query = query.or(`user_id.eq.${validUuid},user_id.is.null`);
     }
 
     const { data, error } = await query;
