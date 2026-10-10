@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react'
 import Dropzone from './components/Dropzone'
 import ProcessingState from './components/ProcessingState'
 import Dashboard from './components/Dashboard'
-import { Zap } from 'lucide-react'
 import YouTubeInput from './components/YouTubeInput'
 import { processLecture, transcribeAudio } from './lib/ai'
 import toast, { Toaster } from 'react-hot-toast'
@@ -222,13 +221,7 @@ function App() {
         {/* Header Section (Only show on upload or processing) */}
         {appState !== 'dashboard' && (
           <div className="text-center mb-10 max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-5 py-2 rounded-2xl bg-[#FFF1C5] border-4 border-black shadow-[4px_4px_0px_#000] mb-6 rotate-[-2deg] hover:rotate-0 transition-transform cursor-pointer">
-              <Zap className="w-4 h-4 text-black fill-current" />
-              <span className="text-xs font-mono font-black text-black uppercase tracking-wider">
-                AUTONOMOUS EXAM STUDY ENGINE // MULTILINGUAL
-              </span>
-            </div>
-            
+
             <h1 className="text-6xl md:text-8xl font-black tracking-tight mb-4 text-black leading-none uppercase">
               ClassMind <span className="bg-[#FFCCD5] px-4 py-0.5 border-4 border-black shadow-[5px_5px_0px_#000] inline-block rotate-[1deg]">AI</span>
             </h1>
