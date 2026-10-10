@@ -81,8 +81,8 @@ export default function AuthModal({ isOpen, onClose }) {
   // Handle Real Email OTP Verify
   const handleVerifyEmailOtp = async (e) => {
     e.preventDefault();
-    if (!emailCode || emailCode.trim().length < 6) {
-      toast.error('Please enter the 6-digit OTP code sent to your email');
+    if (!emailCode || emailCode.trim().length < 4) {
+      toast.error('Please enter the verification code sent to your email');
       return;
     }
     setLoading(true);
@@ -302,7 +302,7 @@ export default function AuthModal({ isOpen, onClose }) {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs font-black uppercase tracking-wider text-black">
-                        Enter 6-Digit Email Code
+                        Enter Email Verification Code
                       </label>
                       <button
                         type="button"
@@ -317,9 +317,9 @@ export default function AuthModal({ isOpen, onClose }) {
                       <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                       <input
                         type="text"
-                        maxLength="6"
+                        maxLength="10"
                         required
-                        placeholder="••••••"
+                        placeholder="Enter Code"
                         value={emailCode}
                         onChange={(e) => setEmailCode(e.target.value)}
                         className="w-full pl-10 pr-4 py-3 bg-white border-2 border-black rounded-xl text-xl font-mono font-black tracking-widest text-center text-black focus:outline-none focus:ring-2 focus:ring-black shadow-[2px_2px_0px_#000]"
