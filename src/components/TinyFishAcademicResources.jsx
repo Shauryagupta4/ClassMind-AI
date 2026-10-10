@@ -13,8 +13,27 @@ export default function TinyFishAcademicResources({ topic, keyTerms = [] }) {
   const [customQuery, setCustomQuery] = useState('');
   const [lastSearched, setLastSearched] = useState('');
 
+  // Extract quick-search suggestions from terms
+  const suggestions = React.useMemo(() => {
+    const list = [];
+    if (topic) {
+      const clean = topic.replace(/[|#_–—:🔥✨✦⚡[\]()]/g, '').trim();
+      if (clean && clean.length > 3) list.push(clean.slice(0, 30));
+    }
+    if (Array.isArray(keyTerms)) {
+      keyTerms.slice(0, 4).forEach(t => {
+        const str = typeof t === 'object' && t !== null ? (t.term || t.name) : String(t);
+        const head = str ? str.split(/[:\-–—(]/)[0].trim() : '';
+        if (head && head.length > 2 && !list.includes(head)) {
+          list.push(head);
+        }
+      });
+    }
+    return list.slice(0, 5);
+  }, [topic, keyTerms]);
+
   const loadResources = async (queryTopic = topic, terms = keyTerms) => {
-    if (!queryTopic) return;
+    if (!queryTopic && (!terms || terms.length === 0)) return;
     setLoading(true);
     try {
       const results = await searchAcademicResources(queryTopic, terms);
@@ -28,15 +47,20 @@ export default function TinyFishAcademicResources({ topic, keyTerms = [] }) {
   };
 
   useEffect(() => {
-    if (topic) {
+    if (topic || (keyTerms && keyTerms.length > 0)) {
       loadResources(topic, keyTerms);
     }
-  }, [topic]);
+  }, [topic, keyTerms?.length]);
 
   const handleCustomSearch = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!customQuery.trim()) return;
     loadResources(customQuery, []);
+  };
+
+  const handleChipSearch = (query) => {
+    setCustomQuery(query);
+    loadResources(query, []);
   };
 
   return (
@@ -74,12 +98,12 @@ export default function TinyFishAcademicResources({ topic, keyTerms = [] }) {
       </div>
 
       {/* Custom live search bar using TinyFish */}
-      <form onSubmit={handleCustomSearch} className="mb-6 flex gap-2">
+      <form onSubmit={handleCustomSearch} className="mb-4 flex gap-2">
         <div className="relative flex-1">
           <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${currentStyles.textSecondary}`} />
           <input
             type="text"
-            placeholder={`Search for extra reference notes, syllabus guides, or topics (e.g. "${topic} study guide")`}
+            placeholder={`Search syllabus notes or practice papers (e.g. "${suggestions[0] || topic || 'topic'} practice questions")`}
             value={customQuery}
             onChange={(e) => setCustomQuery(e.target.value)}
             className={`w-full pl-10 pr-4 py-2.5 text-sm ${currentStyles.inputClass} transition-all duration-200`}
@@ -88,16 +112,34 @@ export default function TinyFishAcademicResources({ topic, keyTerms = [] }) {
         <button
           type="submit"
           disabled={loading}
-          className={`${currentStyles.buttonSmallClass} shrink-0 px-5`}
+          className={`${currentStyles.buttonSmallClass} shrink-0 px-5 cursor-pointer`}
         >
           Search
         </button>
       </form>
 
+      {/* Suggested Quick Search Chips */}
+      {suggestions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-zinc-600">Quick Search:</span>
+          {suggestions.map((s, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleChipSearch(`${s} practice exam questions`)}
+              disabled={loading}
+              className="text-xs font-mono font-bold px-2.5 py-1 rounded-xl bg-white text-black border-2 border-black shadow-[2px_2px_0px_#000] hover:bg-[#FFF1C5] hover:scale-105 active:scale-95 transition-all cursor-pointer"
+            >
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Results grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-6">
-          {[1, 2, 4, 5].map((i) => (
+          {[1, 2, 3, 4].map((i) => (
             <div 
               key={i} 
               className={`p-4 rounded-2xl border ${currentStyles.borderCard} ${currentStyles.bgCard} animate-pulse flex flex-col gap-2`}
@@ -150,10 +192,22 @@ export default function TinyFishAcademicResources({ topic, keyTerms = [] }) {
           </AnimatePresence>
         </div>
       ) : (
-        <div className="text-center py-8">
-          <p className={`${currentStyles.textSecondary} text-sm`}>
-            No external resources found for this search. Try entering a custom query above.
+        <div className="text-center py-8 bg-zinc-50/50 rounded-2xl border-2 border-dashed border-zinc-300 p-6">
+          <p className={`${currentStyles.textSecondary} text-sm font-medium mb-3`}>
+            No live resources returned for the exact query. Click a quick topic below to explore:
           </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {suggestions.map((s, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleChipSearch(`${s} practice questions notes`)}
+                className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-[#FFF1C5] text-black border-2 border-black shadow-[2px_2px_0px_#000] hover:scale-105 transition-all cursor-pointer"
+              >
+                🔍 Search "{s}"
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
