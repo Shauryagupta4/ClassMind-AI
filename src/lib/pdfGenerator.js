@@ -1,9 +1,36 @@
 import { jsPDF } from 'jspdf';
 
 /**
- * Generates an executive, beautifully formatted and aligned PDF for lecture notes.
- * Designed with precise typography, card containers, running headers/footers, and clean alignment.
- * Timestamps are explicitly omitted from the PDF per user specification.
+ * Robust text sanitization function for jsPDF Helvetica / standard Latin-1 encoding.
+ * Completely strips all emojis (which cause corrupted characters like Ø<ß¯),
+ * converts typographical quotes/dashes/bullets to clean ASCII equivalents,
+ * and strips non-printable characters to ensure text never corrupts or clips.
+ */
+function sanitize(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    // Strip all Unicode emojis and symbols
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '')
+    // Convert typographic symbols to standard ASCII
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, '-')
+    .replace(/[•·]/g, '-')
+    .replace(/[…]/g, '...')
+    .replace(/[\u00A0\u2000-\u200B]/g, ' ')
+    // Remove unprintable control characters except newline and tab
+    .replace(/[^\x20-\x7E\n\r\t]/g, '')
+    // Normalize spaces
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Generates an exhaustive, beautifully aligned, textbook-grade Master Detailed Notes PDF.
+ * - Emojis and corrupted unicode symbols are completely sanitized.
+ * - Text wrapping uses strict inner boundary math to guarantee text never cuts out of frame.
+ * - Detailed lecture content, comprehensive study compendium, and deep conceptual breakdowns are front and center.
+ * - Timestamps are omitted from the PDF per user specification.
  *
  * @param {Object} data - Lecture data containing title, subject, summary, sections, keyTerms, teacherIntent, comprehensiveGuide.
  */
@@ -18,68 +45,82 @@ export function generateLecturePDF(data) {
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 38;
-  const contentWidth = pageWidth - margin * 2;
-  const bottomLimit = pageHeight - 44;
+  const margin = 40;
+  const contentWidth = pageWidth - margin * 2; // 515.28 pt on A4
+  const bottomLimit = pageHeight - 48; // Leaves room for clean footer
 
   let y = margin;
 
-  // Helper: Truncate string safely
-  const truncate = (str, maxLen = 60) => {
-    if (!str) return '';
-    return str.length > maxLen ? str.slice(0, maxLen - 3) + '...' : str;
-  };
-
-  // Helper: Draw running header on page 2+
+  // Running page header for page 2+
   const drawPageHeader = () => {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139); // Slate-500
-    doc.text(truncate(data.title || 'Lecture Notes', 60).toUpperCase(), margin, margin - 12);
+    const cleanTitle = sanitize(data.title || 'Comprehensive Lecture Notes');
+    const headerTitle = cleanTitle.length > 55 ? cleanTitle.slice(0, 52) + '...' : cleanTitle;
+    doc.text(headerTitle.toUpperCase(), margin, margin - 14);
 
     doc.setFont('helvetica', 'normal');
-    doc.text('CLASSMIND AI • STUDY REVISION VAULT', pageWidth - margin, margin - 12, { align: 'right' });
+    doc.text('CLASSMIND AI • MASTER STUDY NOTES', pageWidth - margin, margin - 14, { align: 'right' });
 
     doc.setDrawColor(226, 232, 240); // Slate-200
     doc.setLineWidth(0.75);
-    doc.line(margin, margin - 5, pageWidth - margin, margin - 5);
+    doc.line(margin, margin - 6, pageWidth - margin, margin - 6);
   };
 
-  // Helper: Check space and add page with header if needed
+  // Space verification & automatic page breaking helper
   const ensureSpace = (neededHeight) => {
     if (y + neededHeight > bottomLimit) {
       doc.addPage();
       drawPageHeader();
-      y = margin + 20;
+      y = margin + 18;
       return true;
     }
     return false;
   };
 
+  // Helper to safely render multi-line text blocks with exact width bounds
+  const renderParagraph = (text, startX, maxW, fontSize = 9, fontStyle = 'normal', color = [51, 65, 85], lineSpacing = 13.5) => {
+    if (!text) return;
+    const cleanText = sanitize(text);
+    if (!cleanText) return;
+
+    doc.setFont('helvetica', fontStyle);
+    doc.setFontSize(fontSize);
+    doc.setTextColor(color[0], color[1], color[2]);
+
+    const lines = doc.splitTextToSize(cleanText, maxW);
+    lines.forEach((line) => {
+      ensureSpace(lineSpacing + 2);
+      doc.text(line, startX, y);
+      y += lineSpacing;
+    });
+  };
+
   // ==========================================
-  // 1. HERO HEADER BANNER (Page 1)
+  // 1. HERO COVER HEADER (Page 1)
   // ==========================================
-  const headerHeight = 62;
+  const bannerHeight = 58;
   doc.setFillColor(15, 23, 42); // Obsidian / Slate-900
-  doc.roundedRect(margin, y, contentWidth, headerHeight, 6, 6, 'F');
+  doc.roundedRect(margin, y, contentWidth, bannerHeight, 4, 4, 'F');
 
-  // Accent Bottom Stripe
+  // Vibrant Indigo accent stripe
   doc.setFillColor(79, 70, 229); // Indigo-600
-  doc.rect(margin, y + headerHeight - 4, contentWidth, 4, 'F');
+  doc.rect(margin, y + bannerHeight - 4, contentWidth, 4, 'F');
 
-  // Brand Title
+  // Brand Name
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.setTextColor(255, 255, 255);
-  doc.text('CLASSMIND AI', margin + 18, y + 26);
+  doc.text('CLASSMIND AI', margin + 16, y + 25);
 
-  // Brand Subtitle
+  // Subtitle
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(203, 213, 225); // Slate-300
-  doc.text('COMPREHENSIVE EXAM REVISION & STUDY VAULT', margin + 18, y + 42);
+  doc.setFontSize(8);
+  doc.setTextColor(203, 213, 225);
+  doc.text('MASTER COMPREHENSIVE LECTURE STUDY COMPENDIUM', margin + 16, y + 40);
 
-  // Date Badge (Right Aligned)
+  // Date Badge
   const dateStr = new Date().toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -88,234 +129,466 @@ export function generateLecturePDF(data) {
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.setTextColor(165, 180, 252); // Indigo-200
-  doc.text(dateStr, pageWidth - margin - 18, y + 34, { align: 'right' });
+  doc.setTextColor(199, 210, 254);
+  doc.text(dateStr, pageWidth - margin - 16, y + 32, { align: 'right' });
 
-  y += headerHeight + 18;
+  y += bannerHeight + 18;
 
   // ==========================================
-  // 2. DOCUMENT TITLE & METADATA CHIPS
+  // 2. DOCUMENT TITLE & COURSE METADATA
   // ==========================================
+  const rawTitle = sanitize(data.title || 'Comprehensive Lecture Notes');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
+  doc.setFontSize(17);
   doc.setTextColor(15, 23, 42); // Slate-900
 
-  const titleLines = doc.splitTextToSize(data.title || 'Comprehensive Lecture Notes', contentWidth);
-  doc.text(titleLines, margin, y);
-  y += titleLines.length * 21 + 8;
+  const safeTitleLines = doc.splitTextToSize(rawTitle, contentWidth - 10);
+  safeTitleLines.forEach((tLine) => {
+    ensureSpace(22);
+    doc.text(tLine, margin, y);
+    y += 21;
+  });
+  y += 6;
 
-  // Meta Badges Row (Subject, Concept Count, Tone)
-  let badgeX = margin;
-  const drawMetaBadge = (label, bgR, bgG, bgB, textR, textG, textB, borderR, borderG, borderB) => {
+  // Metadata Chips
+  let chipX = margin;
+  const drawChip = (label, bgR, bgG, bgB, textR, textG, textB, borderR, borderG, borderB) => {
+    const cleanLabel = sanitize(label);
+    if (!cleanLabel) return;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
-    const textWidth = doc.getTextWidth(label);
-    const badgeW = textWidth + 14;
-    const badgeH = 16;
+    const chipTextW = doc.getTextWidth(cleanLabel);
+    const chipW = chipTextW + 14;
+    const chipH = 15;
 
-    if (badgeX + badgeW > pageWidth - margin) {
-      badgeX = margin;
-      y += 20;
+    if (chipX + chipW > pageWidth - margin) {
+      chipX = margin;
+      y += 19;
     }
 
     doc.setFillColor(bgR, bgG, bgB);
     doc.setDrawColor(borderR, borderG, borderB);
     doc.setLineWidth(0.75);
-    doc.roundedRect(badgeX, y, badgeW, badgeH, 3, 3, 'FD');
+    doc.roundedRect(chipX, y, chipW, chipH, 3, 3, 'FD');
 
     doc.setTextColor(textR, textG, textB);
-    doc.text(label, badgeX + 7, y + 11);
-    badgeX += badgeW + 8;
+    doc.text(cleanLabel, chipX + 7, y + 10.5);
+    chipX += chipW + 8;
   };
 
   if (data.subject) {
-    drawMetaBadge(`SUBJECT: ${data.subject.toUpperCase()}`, 238, 242, 255, 67, 56, 202, 199, 210, 254);
+    drawChip(`SUBJECT: ${data.subject.toUpperCase()}`, 238, 242, 255, 67, 56, 202, 199, 210, 254);
   }
 
-  const sectionCount = Array.isArray(data.sections) ? data.sections.length : 0;
-  if (sectionCount > 0) {
-    drawMetaBadge(`${sectionCount} CORE MODULES`, 241, 245, 249, 51, 65, 85, 203, 213, 225);
+  const sectionsCount = Array.isArray(data.sections) ? data.sections.length : 0;
+  if (sectionsCount > 0) {
+    drawChip(`${sectionsCount} DETAILED MODULES`, 241, 245, 249, 51, 65, 85, 203, 213, 225);
   }
 
   if (data.teacherIntent?.overallTone) {
-    drawMetaBadge(`TONE: ${data.teacherIntent.overallTone.toUpperCase()}`, 250, 245, 255, 126, 34, 206, 233, 213, 255);
+    drawChip(`TONE: ${data.teacherIntent.overallTone.toUpperCase()}`, 250, 245, 255, 126, 34, 206, 233, 213, 255);
   }
 
   if (data.teacherIntent?.examReadinessScore) {
-    drawMetaBadge(`${data.teacherIntent.examReadinessScore}% EXAM WEIGHT`, 255, 241, 242, 190, 18, 60, 254, 205, 211);
+    drawChip(`${data.teacherIntent.examReadinessScore}% EXAM WEIGHT`, 255, 241, 242, 190, 18, 60, 254, 205, 211);
   }
 
   y += 24;
 
-  // Divider
+  // Horizontal Divider
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.75);
   doc.line(margin, y, pageWidth - margin, y);
   y += 16;
 
   // ==========================================
-  // 3. EXECUTIVE SUMMARY CARD
+  // 3. EXECUTIVE SUMMARY & OBJECTIVES
   // ==========================================
   if (data.summary) {
+    const cleanSummary = sanitize(data.summary);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    const summaryLines = doc.splitTextToSize(data.summary, contentWidth - 32);
-    const cardHeight = summaryLines.length * 13.5 + 32;
+    const summaryLines = doc.splitTextToSize(cleanSummary, contentWidth - 32);
+    const cardH = summaryLines.length * 13.5 + 28;
 
-    ensureSpace(cardHeight + 10);
+    ensureSpace(cardH + 12);
 
-    // Card background & border
     doc.setFillColor(248, 250, 252); // Slate-50
     doc.setDrawColor(226, 232, 240); // Slate-200
-    doc.setLineWidth(1);
-    doc.roundedRect(margin, y, contentWidth, cardHeight, 5, 5, 'FD');
+    doc.setLineWidth(0.75);
+    doc.roundedRect(margin, y, contentWidth, cardH, 4, 4, 'FD');
 
-    // Left indicator bar (Indigo)
-    doc.setFillColor(79, 70, 229);
-    doc.roundedRect(margin, y, 4, cardHeight, 2, 2, 'F');
+    // Left accent bar
+    doc.setFillColor(79, 70, 229); // Indigo-600
+    doc.rect(margin, y, 3.5, cardH, 'F');
 
-    // Header label
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(30, 41, 59);
-    doc.text('EXECUTIVE OVERVIEW', margin + 16, y + 16);
+    doc.text('EXECUTIVE LECTURE OVERVIEW & OBJECTIVES', margin + 14, y + 14);
 
-    // Text content
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(51, 65, 85);
-    doc.text(summaryLines, margin + 16, y + 30);
+    doc.text(summaryLines, margin + 14, y + 27);
 
-    y += cardHeight + 16;
+    y += cardH + 18;
   }
 
   // ==========================================
-  // 4. TEACHER'S INTENT & EXAM RADAR (HIGH-YIELD & TRAPS)
+  // 4. MAIN BODY: COMPREHENSIVE DETAILED LECTURE NOTES (MODULE BY MODULE)
+  // ==========================================
+  const sections = Array.isArray(data.sections) ? data.sections : [];
+
+  if (sections.length > 0) {
+    ensureSpace(40);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text('SECTION 1: COMPREHENSIVE MODULAR LECTURE NOTES', margin, y);
+
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.75);
+    doc.line(margin, y + 5, pageWidth - margin, y + 5);
+    y += 18;
+
+    sections.forEach((section, idx) => {
+      ensureSpace(60);
+
+      // Clean heading & badge (NO corrupted emoji unicode)
+      const rawBadge = sanitize(section.intentBadge || '').replace(/[\[\]]/g, '').trim();
+      const rawHeading = sanitize(section.heading || `Core Topic ${idx + 1}`);
+      const badgePrefix = rawBadge ? `[${rawBadge}] ` : '';
+      const fullHeading = `MODULE ${idx + 1}: ${badgePrefix}${rawHeading}`;
+
+      // Calculate width conservatively to prevent cutting out of frame
+      const maxHeadingW = contentWidth - 36;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(15, 23, 42);
+
+      const headingLines = doc.splitTextToSize(fullHeading, maxHeadingW);
+
+      // Module Card Top Header
+      const headerBoxH = headingLines.length * 14.5 + 14;
+      ensureSpace(headerBoxH + 10);
+
+      doc.setFillColor(241, 245, 249); // Slate-100
+      doc.setDrawColor(203, 213, 225); // Slate-300
+      doc.setLineWidth(0.75);
+      doc.roundedRect(margin, y, contentWidth, headerBoxH, 4, 4, 'FD');
+
+      // Left Accent Strip
+      doc.setFillColor(79, 70, 229); // Indigo
+      doc.rect(margin, y, 4, headerBoxH, 'F');
+
+      // Draw Heading Text
+      doc.text(headingLines, margin + 14, y + 14);
+      y += headerBoxH + 10;
+
+      // Teacher vocal note / emphasis if present
+      if (section.teacherEmphasis) {
+        const cleanEmphasis = sanitize(section.teacherEmphasis);
+        if (cleanEmphasis) {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(8);
+          const emphLines = doc.splitTextToSize(`Instructor Vocal Note: "${cleanEmphasis}"`, contentWidth - 32);
+          const emphH = emphLines.length * 11.5 + 8;
+
+          ensureSpace(emphH + 6);
+
+          doc.setFillColor(255, 251, 235); // Amber-50
+          doc.setDrawColor(253, 230, 138); // Amber-200
+          doc.roundedRect(margin + 6, y, contentWidth - 12, emphH, 3, 3, 'FD');
+
+          doc.setTextColor(146, 64, 14); // Amber-800
+          doc.text(emphLines, margin + 14, y + 10);
+          y += emphH + 8;
+        }
+      }
+
+      // --- Part A: In-Depth Conceptual Theory & Full Explanations ---
+      if (section.detailedContent) {
+        const cleanDetailed = sanitize(section.detailedContent);
+        if (cleanDetailed) {
+          ensureSpace(28);
+
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8.5);
+          doc.setTextColor(79, 70, 229); // Indigo-600
+          doc.text('IN-DEPTH CONCEPTUAL THEORY & DETAILED BREAKDOWN:', margin + 6, y + 6);
+          y += 15;
+
+          // Split by paragraphs to give rich textbook readability
+          const paragraphs = cleanDetailed.split(/\n\s*\n|\n/).filter(p => p.trim().length > 0);
+
+          paragraphs.forEach((para) => {
+            renderParagraph(
+              para.trim(),
+              margin + 6,
+              contentWidth - 14,
+              8.5,
+              'normal',
+              [30, 41, 59], // Slate-800
+              13
+            );
+            y += 5; // Paragraph spacing
+          });
+          y += 4;
+        }
+      }
+
+      // --- Part B: Key Principles & Core Bullet Breakdown ---
+      if (Array.isArray(section.points) && section.points.length > 0) {
+        ensureSpace(24);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(30, 41, 59);
+        doc.text('KEY PRINCIPLES & CORE TAKEAWAYS:', margin + 6, y + 4);
+        y += 12;
+
+        section.points.forEach((point) => {
+          const cleanPoint = sanitize(point);
+          if (!cleanPoint) return;
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          const pointLines = doc.splitTextToSize(cleanPoint, contentWidth - 36);
+          const pointHeight = pointLines.length * 12.5 + 4;
+
+          ensureSpace(pointHeight + 4);
+
+          // Custom square bullet dot
+          doc.setFillColor(99, 102, 241); // Indigo-500
+          doc.rect(margin + 8, y + 2, 3, 3, 'F');
+
+          doc.setTextColor(51, 65, 85); // Slate-700
+          doc.text(pointLines, margin + 18, y + 6);
+          y += pointHeight;
+        });
+        y += 6;
+      }
+
+      // Subtle module separator
+      doc.setDrawColor(241, 245, 249);
+      doc.setLineWidth(0.5);
+      doc.line(margin + 20, y, pageWidth - margin - 20, y);
+      y += 14;
+    });
+
+    y += 10;
+  }
+
+  // ==========================================
+  // 5. ACADEMIC MASTER STUDY COMPENDIUM & SYNTHESIS (Deep Dive Chapter)
+  // ==========================================
+  if (data.comprehensiveGuide) {
+    const cleanGuide = sanitize(data.comprehensiveGuide);
+    if (cleanGuide && cleanGuide.length > 20) {
+      ensureSpace(45);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(15, 23, 42);
+      doc.text('SECTION 2: MASTER ACADEMIC STUDY COMPENDIUM & SYNTHESIS', margin, y);
+
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.75);
+      doc.line(margin, y + 5, pageWidth - margin, y + 5);
+      y += 18;
+
+      // Parse markdown-style sections and render as academic book text
+      const rawLines = cleanGuide.split('\n');
+
+      rawLines.forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          y += 5;
+          return;
+        }
+
+        // Heading Level 3 (###)
+        if (trimmed.startsWith('###')) {
+          const text = trimmed.replace(/^###\s*/, '');
+          ensureSpace(24);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9.5);
+          doc.setTextColor(79, 70, 229); // Indigo
+          doc.text(sanitize(text), margin + 4, y + 6);
+          y += 16;
+          return;
+        }
+
+        // Heading Level 2 (##)
+        if (trimmed.startsWith('##')) {
+          const text = trimmed.replace(/^##\s*/, '');
+          ensureSpace(28);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10.5);
+          doc.setTextColor(15, 23, 42); // Slate-900
+          doc.text(sanitize(text), margin, y + 8);
+          y += 18;
+          return;
+        }
+
+        // Heading Level 1 (#)
+        if (trimmed.startsWith('#')) {
+          const text = trimmed.replace(/^#\s*/, '');
+          ensureSpace(32);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11.5);
+          doc.setTextColor(15, 23, 42);
+          doc.text(sanitize(text), margin, y + 10);
+          y += 20;
+          return;
+        }
+
+        // Bullet point
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          const text = trimmed.replace(/^[-*]\s*/, '');
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          const bLines = doc.splitTextToSize(sanitize(text), contentWidth - 30);
+          const bHeight = bLines.length * 12.5 + 3;
+
+          ensureSpace(bHeight + 3);
+
+          doc.setFillColor(99, 102, 241);
+          doc.rect(margin + 6, y + 2, 2.5, 2.5, 'F');
+
+          doc.setTextColor(51, 65, 85);
+          doc.text(bLines, margin + 16, y + 6);
+          y += bHeight;
+          return;
+        }
+
+        // Regular paragraph text
+        renderParagraph(trimmed, margin + 4, contentWidth - 12, 8.5, 'normal', [51, 65, 85], 13);
+      });
+
+      y += 14;
+    }
+  }
+
+  // ==========================================
+  // 6. APPENDIX: TEACHER'S EXAM RADAR & WARNING PITFALLS
   // ==========================================
   const highYieldTopics = data.teacherIntent?.highYieldTopics || [];
   const warningTraps = data.teacherIntent?.warningTraps || [];
 
   if (highYieldTopics.length > 0 || warningTraps.length > 0) {
-    ensureSpace(60);
+    ensureSpace(45);
 
-    // Section title
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(15, 23, 42);
-    doc.text('EXAM INTENT & HIGH-YIELD PROBABLES', margin, y);
+    doc.text('SECTION 3: EXAM STRATEGY, GUARANTEED PROBABLES & PITFALL TRAPS', margin, y);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text('Analysis of instructor vocal emphasis, exam weightage & critical traps', margin, y + 11);
-    y += 20;
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.75);
+    doc.line(margin, y + 5, pageWidth - margin, y + 5);
+    y += 16;
 
-    // A. High-Yield Exam Topics
+    // High Yield Topics
     if (highYieldTopics.length > 0) {
       highYieldTopics.forEach((item, idx) => {
-        const itemTopic = item.topic || `Priority Topic ${idx + 1}`;
-        const intentLevel = item.intentLevel || 'MUST-KNOW';
-        const verbalCues = item.verbalCues;
-        const whyImportant = item.whyImportant;
+        const topicName = sanitize(item.topic || `Priority Topic ${idx + 1}`);
+        const intentLevel = sanitize(item.intentLevel || 'MUST-KNOW');
+        const verbalCues = sanitize(item.verbalCues || '');
+        const whyImportant = sanitize(item.whyImportant || '');
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        const topicLines = doc.splitTextToSize(`${idx + 1}. [${intentLevel}] ${itemTopic}`, contentWidth - 32);
+        doc.setFontSize(8.5);
+        const titleLines = doc.splitTextToSize(`* [${intentLevel}] ${topicName}`, contentWidth - 28);
 
-        let itemHeight = topicLines.length * 13 + 12;
         let cueLines = [];
-        let noteLines = [];
+        let whyLines = [];
 
         if (verbalCues) {
           doc.setFont('helvetica', 'italic');
           doc.setFontSize(8);
-          cueLines = doc.splitTextToSize(`Instructor Cue: "${verbalCues}"`, contentWidth - 36);
-          itemHeight += cueLines.length * 11 + 6;
+          cueLines = doc.splitTextToSize(`Instructor Vocal Cue: "${verbalCues}"`, contentWidth - 32);
         }
 
         if (whyImportant) {
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(8);
-          noteLines = doc.splitTextToSize(`Exam Relevance: ${whyImportant}`, contentWidth - 36);
-          itemHeight += noteLines.length * 11 + 6;
+          whyLines = doc.splitTextToSize(`Exam Relevance: ${whyImportant}`, contentWidth - 32);
         }
 
-        ensureSpace(itemHeight + 8);
+        const cardH = titleLines.length * 12 + cueLines.length * 11 + whyLines.length * 11 + 14;
+        ensureSpace(cardH + 6);
 
-        // Card Container
         doc.setFillColor(255, 241, 242); // Rose-50
         doc.setDrawColor(254, 205, 211); // Rose-200
-        doc.setLineWidth(0.75);
-        doc.roundedRect(margin, y, contentWidth, itemHeight, 4, 4, 'FD');
+        doc.roundedRect(margin, y, contentWidth, cardH, 3, 3, 'FD');
 
-        // Left Accent Bar (Rose-600)
-        doc.setFillColor(225, 29, 72);
-        doc.rect(margin, y, 3.5, itemHeight, 'F');
-
-        // Heading
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.setTextColor(159, 18, 57); // Rose-800
-        doc.text(topicLines, margin + 14, y + 12);
-        let internalY = y + 12 + topicLines.length * 13;
-
-        // Verbal Cue
-        if (cueLines.length > 0) {
-          doc.setFont('helvetica', 'italic');
-          doc.setFontSize(8);
-          doc.setTextColor(71, 85, 105);
-          doc.text(cueLines, margin + 14, internalY);
-          internalY += cueLines.length * 11 + 4;
-        }
-
-        // Exam Note
-        if (noteLines.length > 0) {
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8);
-          doc.setTextColor(30, 41, 59);
-          doc.text(noteLines, margin + 14, internalY);
-        }
-
-        y += itemHeight + 8;
-      });
-    }
-
-    // B. Warning Traps & Common Confusion
-    if (warningTraps.length > 0) {
-      warningTraps.forEach((trap, idx) => {
-        const concept = trap.concept || `Pitfall Concept ${idx + 1}`;
-        const warning = trap.warning || '';
-
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.5);
-        const conceptLines = doc.splitTextToSize(`PITFALL #${idx + 1}: ${concept}`, contentWidth - 32);
-
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        const warningLines = doc.splitTextToSize(`Warning: ${warning}`, contentWidth - 32);
-
-        const cardH = conceptLines.length * 12 + warningLines.length * 11 + 16;
-        ensureSpace(cardH + 8);
-
-        doc.setFillColor(254, 243, 199); // Amber-100
-        doc.setDrawColor(253, 230, 138); // Amber-200
-        doc.setLineWidth(0.75);
-        doc.roundedRect(margin, y, contentWidth, cardH, 4, 4, 'FD');
-
-        doc.setFillColor(217, 119, 6); // Amber-600
+        doc.setFillColor(225, 29, 72); // Rose-600
         doc.rect(margin, y, 3.5, cardH, 'F');
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8.5);
-        doc.setTextColor(146, 64, 14); // Amber-800
-        doc.text(conceptLines, margin + 14, y + 11);
+        doc.setTextColor(159, 18, 57);
+        doc.text(titleLines, margin + 12, y + 11);
+
+        let subY = y + 11 + titleLines.length * 12;
+
+        if (cueLines.length > 0) {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(8);
+          doc.setTextColor(71, 85, 105);
+          doc.text(cueLines, margin + 14, subY);
+          subY += cueLines.length * 11;
+        }
+
+        if (whyLines.length > 0) {
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8);
+          doc.setTextColor(30, 41, 59);
+          doc.text(whyLines, margin + 14, subY);
+        }
+
+        y += cardH + 6;
+      });
+    }
+
+    // Warning Traps
+    if (warningTraps.length > 0) {
+      warningTraps.forEach((trap, idx) => {
+        const concept = sanitize(trap.concept || `Pitfall Concept ${idx + 1}`);
+        const warning = sanitize(trap.warning || '');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        const conceptLines = doc.splitTextToSize(`[PITFALL TRAP #${idx + 1}] ${concept}`, contentWidth - 28);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        const warningLines = doc.splitTextToSize(`Caution: ${warning}`, contentWidth - 28);
+
+        const trapCardH = conceptLines.length * 12 + warningLines.length * 11 + 14;
+        ensureSpace(trapCardH + 6);
+
+        doc.setFillColor(254, 243, 199); // Amber-100
+        doc.setDrawColor(253, 230, 138); // Amber-200
+        doc.roundedRect(margin, y, contentWidth, trapCardH, 3, 3, 'FD');
+
+        doc.setFillColor(217, 119, 6); // Amber-600
+        doc.rect(margin, y, 3.5, trapCardH, 'F');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(146, 64, 14);
+        doc.text(conceptLines, margin + 12, y + 11);
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
         doc.setTextColor(69, 26, 3);
-        doc.text(warningLines, margin + 14, y + 11 + conceptLines.length * 12);
+        doc.text(warningLines, margin + 12, y + 11 + conceptLines.length * 12);
 
-        y += cardH + 8;
+        y += trapCardH + 6;
       });
     }
 
@@ -323,17 +596,21 @@ export function generateLecturePDF(data) {
   }
 
   // ==========================================
-  // 5. KEY TERMS & GLOSSARY (ELEGANT 2-COLUMN OR CLEAN LIST)
+  // 7. APPENDIX: KEY TERMS & DEFINITIONS GLOSSARY
   // ==========================================
   const rawTerms = data.keyTerms || [];
   if (Array.isArray(rawTerms) && rawTerms.length > 0) {
-    ensureSpace(60);
+    ensureSpace(45);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(15, 23, 42);
-    doc.text('KEY TERMS & GLOSSARY', margin, y);
-    y += 14;
+    doc.text('SECTION 4: KEY TERMS & ACADEMIC GLOSSARY', margin, y);
+
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.75);
+    doc.line(margin, y + 5, pageWidth - margin, y + 5);
+    y += 16;
 
     rawTerms.forEach((termItem) => {
       let termStr = typeof termItem === 'string' ? termItem : (termItem.term || JSON.stringify(termItem));
@@ -352,6 +629,9 @@ export function generateLecturePDF(data) {
         defStr = parts.slice(1).join(' - ').trim();
       }
 
+      termStr = sanitize(termStr);
+      defStr = sanitize(defStr);
+
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       const termLines = doc.splitTextToSize(termStr, contentWidth - 28);
@@ -363,14 +643,12 @@ export function generateLecturePDF(data) {
         defLines = doc.splitTextToSize(defStr, contentWidth - 28);
       }
 
-      const termHeight = termLines.length * 11 + (defLines.length > 0 ? defLines.length * 10.5 + 4 : 0) + 6;
-      ensureSpace(termHeight + 4);
+      const termH = termLines.length * 11 + (defLines.length > 0 ? defLines.length * 10.5 + 4 : 0) + 6;
+      ensureSpace(termH + 4);
 
-      // Bullet dot
-      doc.setFillColor(79, 70, 229); // Indigo
+      doc.setFillColor(79, 70, 229);
       doc.circle(margin + 5, y + 5, 2, 'F');
 
-      // Term
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(30, 41, 59);
@@ -378,7 +656,6 @@ export function generateLecturePDF(data) {
 
       let subY = y + 7 + termLines.length * 11;
 
-      // Definition
       if (defLines.length > 0) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
@@ -386,191 +663,10 @@ export function generateLecturePDF(data) {
         doc.text(defLines, margin + 14, subY);
       }
 
-      y += termHeight + 4;
+      y += termH + 4;
     });
 
     y += 12;
-  }
-
-  // ==========================================
-  // 6. COMPREHENSIVE CONCEPTUAL LECTURE SECTIONS
-  // ==========================================
-  const sections = Array.isArray(data.sections) ? data.sections : [];
-
-  if (sections.length > 0) {
-    ensureSpace(45);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(15, 23, 42);
-    doc.text('COMPREHENSIVE CONCEPTUAL BREAKDOWN', margin, y);
-
-    doc.setDrawColor(203, 213, 225);
-    doc.setLineWidth(0.75);
-    doc.line(margin, y + 6, pageWidth - margin, y + 6);
-    y += 18;
-
-    sections.forEach((section, idx) => {
-      ensureSpace(60);
-
-      // Section Number Badge
-      const numBoxSize = 18;
-      doc.setFillColor(238, 242, 255); // Indigo-50
-      doc.setDrawColor(199, 210, 254); // Indigo-200
-      doc.setLineWidth(1);
-      doc.roundedRect(margin, y - 2, numBoxSize, numBoxSize, 4, 4, 'FD');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(67, 56, 202); // Indigo-700
-      doc.text(String(idx + 1), margin + (numBoxSize / 2), y + 10, { align: 'center' });
-
-      // Section Heading (No timestamps!)
-      const badgePrefix = section.intentBadge ? `[${section.intentBadge}] ` : '';
-      const headingText = `${badgePrefix}${section.heading || `Concept Module ${idx + 1}`}`;
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(15, 23, 42);
-      const headingLines = doc.splitTextToSize(headingText, contentWidth - 30);
-      doc.text(headingLines, margin + 26, y + 10);
-      y += Math.max(numBoxSize, headingLines.length * 15) + 6;
-
-      // Teacher vocal note / emphasis if present
-      if (section.teacherEmphasis) {
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(8);
-        const emphasisLines = doc.splitTextToSize(`Instructor Vocal Note: "${section.teacherEmphasis}"`, contentWidth - 32);
-        const emphHeight = emphasisLines.length * 11 + 10;
-
-        ensureSpace(emphHeight + 4);
-
-        doc.setFillColor(241, 245, 249);
-        doc.setDrawColor(226, 232, 240);
-        doc.roundedRect(margin + 12, y, contentWidth - 12, emphHeight, 3, 3, 'FD');
-
-        doc.setTextColor(71, 85, 105);
-        doc.text(emphasisLines, margin + 22, y + 10);
-        y += emphHeight + 6;
-      }
-
-      // Key Takeaway Bullet Points
-      if (Array.isArray(section.points) && section.points.length > 0) {
-        section.points.forEach((point) => {
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8.5);
-          const pointLines = doc.splitTextToSize(point, contentWidth - 32);
-          const pointHeight = pointLines.length * 12.5 + 4;
-
-          ensureSpace(pointHeight + 3);
-
-          // Custom square bullet
-          doc.setFillColor(99, 102, 241); // Indigo-500
-          doc.rect(margin + 14, y + 3, 3, 3, 'F');
-
-          doc.setTextColor(51, 65, 85); // Slate-700
-          doc.text(pointLines, margin + 24, y + 8);
-          y += pointHeight;
-        });
-        y += 4;
-      }
-
-      // Detailed Conceptual Breakdown & Deep Dive (In-depth notes)
-      if (section.detailedContent) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8.5);
-        const detailedLines = doc.splitTextToSize(section.detailedContent, contentWidth - 40);
-
-        // Header for detailed breakdown
-        ensureSpace(28);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        doc.setTextColor(79, 70, 229); // Indigo-600
-        doc.text('DETAILED CONCEPTUAL BREAKDOWN & ANALYSIS:', margin + 14, y + 6);
-        y += 14;
-
-        // Render detailed content safely with continuous left accent bar across pages
-        const lineHeight = 12;
-        let blockStartIndex = 0;
-
-        while (blockStartIndex < detailedLines.length) {
-          const linesAvailable = Math.max(1, Math.floor((bottomLimit - y) / lineHeight));
-          const linesToPrint = detailedLines.slice(blockStartIndex, blockStartIndex + linesAvailable);
-          const blockH = linesToPrint.length * lineHeight + 8;
-
-          // Background card for current page segment
-          doc.setFillColor(248, 250, 252); // Slate-50
-          doc.setDrawColor(226, 232, 240); // Slate-200
-          doc.setLineWidth(0.75);
-          doc.roundedRect(margin + 12, y - 2, contentWidth - 12, blockH, 3, 3, 'FD');
-
-          // Left border bar
-          doc.setFillColor(99, 102, 241); // Indigo
-          doc.rect(margin + 12, y - 2, 2.5, blockH, 'F');
-
-          // Print lines
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8.5);
-          doc.setTextColor(30, 41, 59); // Slate-800
-          doc.text(linesToPrint, margin + 22, y + 8);
-
-          y += blockH + 6;
-          blockStartIndex += linesToPrint.length;
-
-          if (blockStartIndex < detailedLines.length) {
-            doc.addPage();
-            drawPageHeader();
-            y = margin + 20;
-          }
-        }
-
-        y += 8;
-      }
-
-      y += 8;
-    });
-  }
-
-  // ==========================================
-  // 7. COMPREHENSIVE ACADEMIC STUDY GUIDE (Deep Dive)
-  // ==========================================
-  if (data.comprehensiveGuide) {
-    ensureSpace(45);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(15, 23, 42);
-    doc.text('ACADEMIC MASTER STUDY GUIDE & SYNTHESIS', margin, y);
-
-    doc.setDrawColor(203, 213, 225);
-    doc.setLineWidth(0.75);
-    doc.line(margin, y + 6, pageWidth - margin, y + 6);
-    y += 18;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    const guideLines = doc.splitTextToSize(data.comprehensiveGuide, contentWidth - 16);
-
-    const guideLineHeight = 12.5;
-    let guideIndex = 0;
-
-    while (guideIndex < guideLines.length) {
-      const available = Math.max(1, Math.floor((bottomLimit - y) / guideLineHeight));
-      const chunk = guideLines.slice(guideIndex, guideIndex + available);
-
-      doc.text(chunk, margin + 8, y + 8);
-      y += chunk.length * guideLineHeight;
-      guideIndex += chunk.length;
-
-      if (guideIndex < guideLines.length) {
-        doc.addPage();
-        drawPageHeader();
-        y = margin + 20;
-      }
-    }
-
-    y += 14;
   }
 
   // ==========================================
@@ -589,11 +685,11 @@ export function generateLecturePDF(data) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184); // Slate-400
-    doc.text('ClassMind AI • Smart Revision & Active Recall Notes', margin, pageHeight - 16);
+    doc.text('ClassMind AI • Comprehensive Lecture Notes & Study Compendium', margin, pageHeight - 16);
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 16, { align: 'right' });
   }
 
   // Download PDF
-  const safeTitle = (data.title || 'lecture_notes').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  doc.save(`${safeTitle}.pdf`);
+  const safeTitle = sanitize(data.title || 'lecture_notes').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  doc.save(`${safeTitle || 'comprehensive_notes'}.pdf`);
 }

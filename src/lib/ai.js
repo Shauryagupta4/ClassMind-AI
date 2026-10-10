@@ -202,13 +202,14 @@ ${transcript}`;
  * Worker 2: Structured Notes, Detailed Breakdown & In-Depth PDF Compendium (Notes & PDF Key)
  */
 async function fetchNotesWorker(transcript) {
-  const prompt = `You are a master academic notes compiler, exam coach, and curriculum specialist.
+  const prompt = `You are a master academic notes compiler, university professor, and exam curriculum specialist.
 The lecture material may be in English, Hindi (हिंदी / Devanagari), Romanized Hinglish, or any other language.
 The lecture material may contain audio/video timeline markers formatted like [MM:SS] or [HH:MM:SS].
 
-Understand the content completely in its original language and generate high-yield, structured academic sections for both on-screen quick review and downloadable exhaustive master notes.
+Understand the content completely in its original language and generate high-yield, exhaustive academic sections for both on-screen quick review and downloadable comprehensive master notes.
 TIMESTAMPS: For every section, extract or calculate the start and end timestamp (e.g. "01:25 - 04:30" or "00:00 - 02:45") from the transcript time markers where this section's topic is covered in the audio/video.
 For every section, evaluate the TEACHER'S INTENT and assign an exam intent badge along with a teacher's emphasis note.
+IMPORTANT FOR DETAILED NOTES: Provide in-depth, thorough explanations in detailedContent and comprehensiveGuide so the resulting PDF reads like an authoritative textbook chapter with complete conceptual clarity.
 
 Format strictly in JSON:
 {
@@ -222,10 +223,10 @@ Format strictly in JSON:
         "string (concise bullet point for quick on-screen scanning)",
         "string (concise bullet point for quick on-screen scanning)"
       ],
-      "detailedContent": "string (thorough, comprehensive multi-paragraph explanation covering underlying mechanisms, formulas/laws, real-world examples, and deep conceptual explanations for this section)"
+      "detailedContent": "string (exhaustive, thorough multi-paragraph textbook-grade explanation. Must comprehensively break down underlying mechanisms, step-by-step logic, formulas/laws, technical architecture, real-world case studies, and deep conceptual nuances so a student can master the topic purely from these notes)"
     }
   ],
-  "comprehensiveGuide": "string (extensive in-depth markdown study compendium covering deep dives, common exam misconceptions, and comprehensive analysis)"
+  "comprehensiveGuide": "string (extensive academic master study guide chapter formatted with clear markdown headings, deep dive conceptual breakdowns, formulas, common exam misconceptions, and comprehensive analysis)"
 }
 
 Lecture Material:
