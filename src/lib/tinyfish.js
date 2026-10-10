@@ -1,7 +1,7 @@
 // TinyFish API Integration for ClassMind AI
 // Provides live academic search, exam past-paper retrieval, and web scraping.
 
-const TINYFISH_API_KEY = import.meta.env.VITE_TINYFISH_API_KEY || "";
+const TINYFISH_API_KEY = import.meta.env.VITE_TINYFISH_API_KEY || "sk-tinyfish-9aIk4_Wt4XAiFAZjjvO5imiQAuP3TpGI";
 
 // In-memory cache to ensure instant loading and prevent flickering for the same lecture
 const resourceCache = new Map();
@@ -127,6 +127,11 @@ export async function searchAcademicResources(topic, keyTerms = []) {
     if (q4 && q4 !== q1 && q4 !== q2) {
       results = await executeTinyFishSearch(q4);
     }
+  }
+
+  // Tier 5: Direct core topic fallback
+  if ((!results || results.length === 0) && sanitizedTopic) {
+    results = await executeTinyFishSearch(sanitizedTopic);
   }
 
   if (Array.isArray(results) && results.length > 0) {
