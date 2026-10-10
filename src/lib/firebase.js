@@ -38,7 +38,11 @@ export const setupRecaptcha = (containerId = 'recaptcha-container') => {
     }
   }
 
-  window.recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, containerId, {
+  // In Firebase v9/v10/v11 SDK:
+  // new RecaptchaVerifier(auth, containerIdOrElement, parameters)
+  const container = document.getElementById(containerId) || 'recaptcha-container';
+
+  window.recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, container, {
     size: 'invisible',
     callback: () => {
       // reCAPTCHA solved
