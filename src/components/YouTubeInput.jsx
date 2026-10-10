@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, Video, Globe, Sparkles, Languages, AlertTriangle } from 'lucide-react';
+import { Loader2, Video, Globe, Sparkles, AlertTriangle } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { fetchWebContent } from '../lib/tinyfish';
 
@@ -9,7 +9,6 @@ const YouTubeInput = ({ onTranscriptReady }) => {
   
   const [mode, setMode] = useState('youtube'); // 'youtube' | 'web'
   const [url, setUrl] = useState('');
-  const [langPreference, setLangPreference] = useState('auto'); // 'auto' | 'hi' | 'en'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [disabledCaptionMeta, setDisabledCaptionMeta] = useState(null);
@@ -20,7 +19,7 @@ const YouTubeInput = ({ onTranscriptReady }) => {
       onTranscriptReady(promptText, {
         type: 'youtube',
         name: topicName,
-        language: langPreference
+        language: 'auto-detected'
       });
     }
   };
@@ -38,10 +37,7 @@ const YouTubeInput = ({ onTranscriptReady }) => {
         const resp = await fetch(`${serverUrl}/api/transcript`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            url,
-            lang: langPreference === 'auto' ? null : langPreference
-          }),
+          body: JSON.stringify({ url }),
         });
         
         if (!resp.ok) {
@@ -58,7 +54,7 @@ const YouTubeInput = ({ onTranscriptReady }) => {
           onTranscriptReady(transcript, { 
             type: 'youtube', 
             name: url,
-            language: language || langPreference
+            language: language || 'auto-detected'
           });
         }
       } else {
@@ -112,39 +108,11 @@ const YouTubeInput = ({ onTranscriptReady }) => {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <label className={`block text-xs font-semibold ${currentStyles.textSecondary} mb-2 text-center`}>
+        <label className={`block text-xs font-semibold ${currentStyles.textSecondary} mb-3 text-center`}>
           {mode === 'youtube' 
-            ? 'Paste any YouTube URL (Supports Hindi हिंदी, Hinglish, English & multilingual subtitles)' 
+            ? 'Paste any YouTube URL (Auto-detects Hindi हिंदी, Hinglish, English & multilingual subtitles)' 
             : 'Paste any course link, Wikipedia, or syllabus URL (Ingested by TinyFish)'}
         </label>
-
-        {/* Language selector in YouTube mode */}
-        {mode === 'youtube' && (
-          <div className="flex items-center justify-center gap-1.5 mb-2.5">
-            <span className="text-[11px] font-mono font-bold text-zinc-700 flex items-center gap-1">
-              <Languages className="w-3.5 h-3.5" />
-              Language:
-            </span>
-            {[
-              { id: 'auto', label: '🌐 Auto / Any Language' },
-              { id: 'hi', label: '🇮🇳 Hindi (हिंदी)' },
-              { id: 'en', label: '🇬🇧 English' }
-            ].map(l => (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => setLangPreference(l.id)}
-                className={`px-2 py-0.5 text-[10px] md:text-[11px] font-bold rounded-lg border-2 border-black transition-all cursor-pointer ${
-                  langPreference === l.id
-                    ? 'bg-[#FFCCD5] text-black shadow-[2px_2px_0px_#000] -translate-y-0.5 font-black'
-                    : 'bg-white text-zinc-700 hover:bg-zinc-100 shadow-[1px_1px_0px_#000]'
-                }`}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
-        )}
         
         <div className="flex gap-2">
           <input
