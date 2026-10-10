@@ -1,9 +1,14 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import Dropzone from './components/Dropzone'
 import ProcessingState from './components/ProcessingState'
 import Dashboard from './components/Dashboard'
 import YouTubeInput from './components/YouTubeInput'
+import Navbar from './components/Navbar'
+import AuthModal from './components/AuthModal'
+import SavedLecturesModal from './components/SavedLecturesModal'
 import { processLecture, transcribeAudio } from './lib/ai'
+import { saveLecture, getUserLectures } from './lib/supabase'
+import { useAuth } from './context/AuthContext'
 import toast, { Toaster } from 'react-hot-toast'
 import { useTheme } from './context/ThemeContext'
 
@@ -64,11 +69,25 @@ const extractTopicWords = (data) => {
 function App() {
   const { theme, styles } = useTheme();
   const currentStyles = styles[theme] || styles.pastelBrutal;
+  const { user } = useAuth();
   
   const [appState, setAppState] = useState('upload'); // 'upload' | 'processing' | 'dashboard'
   const [dashboardData, setDashboardData] = useState(null);
   const [sourceInfo, setSourceInfo] = useState({ type: 'file', name: 'Lecture' });
   const [isProcessingReady, setIsProcessingReady] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [savedCount, setSavedCount] = useState(0);
+
+  // Sync count of saved lectures from Supabase / Local storage
+  useEffect(() => {
+    getUserLectures(user).then(list => setSavedCount(list?.length || 0));
+  }, [user]);
+
+  const handleLoadLecture = (lecture) => {
+    setDashboardData(lecture);
+    setAppState('dashboard');
+  };
 
   // Dynamic floating background badges tailored to the specific lecture topic
   const topicBadges = useMemo(() => {
@@ -172,6 +191,27 @@ function App() {
         }} 
       />
 
+      {/* Top Navbar */}
+      <Navbar 
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+        onOpenHistory={() => setIsHistoryModalOpen(true)}
+        onResetHome={() => setAppState('upload')}
+        savedCount={savedCount}
+      />
+
+      {/* Auth Modal (Login / Sign Up / Demo Student) */}
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+      />
+
+      {/* Saved Lectures Vault Modal (Supabase Database) */}
+      <SavedLecturesModal 
+        isOpen={isHistoryModalOpen} 
+        onClose={() => setIsHistoryModalOpen(false)} 
+        onLoadLecture={handleLoadLecture}
+      />
+
       {/* Brutal Pastel Background Overlay & Ambient Elements */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden z-0">
         {/* Subtle grid layer */}
@@ -187,10 +227,10 @@ function App() {
 
         {/* Floating Pastel Neo-Brutalist Sticker Badges & Shapes - Dynamically tailored to lecture topic */}
         {/* Top Outer Margins */}
-        <div className="absolute top-4 md:top-6 left-3 md:left-6 lg:left-10 bg-[#FFCCD5] border-3 md:border-4 border-black shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000] px-3 py-1.5 md:px-4 md:py-2 rounded-xl md:rounded-2xl text-[11px] md:text-xs font-mono font-black text-black rotate-[-6deg] animate-pastel-float select-none transition-all duration-500">
+        <div className="absolute top-16 md:top-20 left-3 md:left-6 lg:left-10 bg-[#FFCCD5] border-3 md:border-4 border-black shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000] px-3 py-1.5 md:px-4 md:py-2 rounded-xl md:rounded-2xl text-[11px] md:text-xs font-mono font-black text-black rotate-[-6deg] animate-pastel-float select-none transition-all duration-500">
           {topicBadges[0].icon} {topicBadges[0].text}
         </div>
-        <div className="absolute top-4 md:top-6 right-3 md:right-6 lg:right-10 bg-[#C7E9DE] border-3 md:border-4 border-black shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000] px-3 py-1.5 md:px-4 md:py-2 rounded-xl md:rounded-2xl text-[11px] md:text-xs font-mono font-black text-black rotate-[5deg] animate-pastel-float-alt select-none transition-all duration-500">
+        <div className="absolute top-16 md:top-20 right-3 md:right-6 lg:right-10 bg-[#C7E9DE] border-3 md:border-4 border-black shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000] px-3 py-1.5 md:px-4 md:py-2 rounded-xl md:rounded-2xl text-[11px] md:text-xs font-mono font-black text-black rotate-[5deg] animate-pastel-float-alt select-none transition-all duration-500">
           {topicBadges[1].icon} {topicBadges[1].text}
         </div>
 
@@ -217,7 +257,7 @@ function App() {
         <div className="absolute bottom-[30%] right-[3%] w-5 h-5 bg-[#E8D7F1] border-2 border-black rounded-md rotate-[-15deg] shadow-[2px_2px_0px_#000] animate-pastel-float select-none hidden lg:block" />
       </div>
       
-      <div className="relative z-10 flex flex-col items-center pt-20 px-6 pb-20">
+      <div className="relative z-10 flex flex-col items-center pt-28 md:pt-32 px-6 pb-20">
         {/* Header Section (Only show on upload or processing) */}
         {appState !== 'dashboard' && (
           <div className="text-center mb-10 max-w-3xl">
@@ -248,6 +288,11 @@ function App() {
             onComplete={() => {
               setAppState('dashboard');
               toast.success("Analysis complete!");
+              if (dashboardData) {
+                saveLecture(dashboardData, user).then(() => {
+                  getUserLectures(user).then(list => setSavedCount(list?.length || 0));
+                });
+              }
             }}
             onCancel={() => {
               toast.dismiss('transcribe');
