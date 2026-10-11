@@ -371,9 +371,10 @@ app.post('/api/sync-profile', async (req, res) => {
   }
 });
 
-app.post('/api/transcript', async (req, res) => {
+app.all('/api/transcript', async (req, res) => {
   try {
-    const { url, lang } = req.body;
+    const url = req.body?.url || req.query?.url;
+    const lang = req.body?.lang || req.query?.lang;
     if (!url) {
       return res.status(400).json({ error: 'URL is required' });
     }

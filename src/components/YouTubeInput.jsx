@@ -51,9 +51,11 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
       if (mode === 'youtube') {
         const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
         const configuredUrl = import.meta.env.VITE_SERVER_URL;
-        const serverUrl = configuredUrl || (isLocal ? 'http://localhost:3001' : '');
+        const serverUrl = isLocal 
+          ? (configuredUrl || 'http://localhost:3001')
+          : (configuredUrl?.startsWith('https://') ? configuredUrl : '');
 
-        let resp;
+        let resp = null;
         try {
           resp = await fetch(`${serverUrl}/api/transcript`, {
             method: 'POST',
@@ -61,24 +63,26 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
             body: JSON.stringify({ url }),
           });
         } catch (fetchErr) {
-          console.warn('Primary transcript endpoint unreachable, attempting fallback:', fetchErr);
-          // If deployed and serverUrl was http://localhost:3001, try relative /api/transcript
-          if (serverUrl && !serverUrl.startsWith(window.location.origin)) {
-            try {
-              resp = await fetch('/api/transcript', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url }),
-              });
-            } catch (fallbackErr) {
-              resp = null;
+          console.warn('POST transcript endpoint error, trying GET query fallback:', fetchErr);
+        }
+
+        // If POST failed or wasn't ok, try GET parameter
+        if (!resp || !resp.ok) {
+          try {
+            const getResp = await fetch(`${serverUrl}/api/transcript?url=${encodeURIComponent(url)}`);
+            if (getResp.ok) {
+              resp = getResp;
+            } else if (!resp) {
+              resp = getResp;
             }
+          } catch (getErr) {
+            console.warn('GET transcript retry error:', getErr);
           }
         }
         
         if (resp && resp.ok) {
           const { transcript, language } = await resp.json();
-          if (onTranscriptReady) {
+          if (onTranscriptReady && transcript) {
             onTranscriptReady(transcript, { 
               type: 'youtube', 
               name: url,
@@ -213,10 +217,10 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <h4 className="text-xs font-mono font-black text-amber-950 uppercase tracking-wide">
-                  Subtitles / Captions Disabled by Creator
+                  YouTube Subtitles Restricted or Closed by Creator
                 </h4>
                 <p className="text-xs font-bold text-amber-900 mt-1 leading-snug">
-                  The creator of <b>"{disabledCaptionMeta.videoTitle || 'this video'}"</b> did not enable subtitles/captions on YouTube.
+                  For <b>"{disabledCaptionMeta.videoTitle || 'this video'}"</b>, YouTube restricted cloud subtitle download. Choose how you would like to proceed:
                 </p>
                 
                 <div className="mt-3 flex flex-wrap gap-2">

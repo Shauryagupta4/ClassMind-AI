@@ -283,11 +283,20 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { url, lang } = req.body || {};
+  let body = req.body;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch (e) {}
+  } else if (Buffer.isBuffer(body)) {
+    try { body = JSON.parse(body.toString()); } catch (e) {}
+  }
+
+  const url = body?.url || req.query?.url;
+  const lang = body?.lang || req.query?.lang;
+
   if (!url) {
     return res.status(400).json({ error: 'YouTube URL is required' });
   }
