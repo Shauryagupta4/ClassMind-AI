@@ -201,7 +201,7 @@ export default function TinyFishAcademicResources({ topic, keyTerms = [] }) {
               <button
                 key={idx}
                 type="button"
-                onClick={() => handleChipSearch(`${s} practice questions notes`)}
+                onClick={() => handleChipSearch(s)}
                 className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-[#FFF1C5] text-black border-2 border-black shadow-[2px_2px_0px_#000] hover:scale-105 transition-all cursor-pointer"
               >
                 🔍 Search "{s}"
