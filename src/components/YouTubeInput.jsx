@@ -47,31 +47,78 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
 
     try {
       if (mode === 'youtube') {
-        const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
-        const resp = await fetch(`${serverUrl}/api/transcript`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url }),
-        });
+        const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+        const configuredUrl = import.meta.env.VITE_SERVER_URL;
+        const serverUrl = configuredUrl || (isLocal ? 'http://localhost:3001' : '');
+
+        let resp;
+        try {
+          resp = await fetch(`${serverUrl}/api/transcript`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url }),
+          });
+        } catch (fetchErr) {
+          console.warn('Primary transcript endpoint unreachable, attempting fallback:', fetchErr);
+          // If deployed and serverUrl was http://localhost:3001, try relative /api/transcript
+          if (serverUrl && !serverUrl.startsWith(window.location.origin)) {
+            try {
+              resp = await fetch('/api/transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url }),
+              });
+            } catch (fallbackErr) {
+              resp = null;
+            }
+          }
+        }
         
-        if (!resp.ok) {
-          const errData = await resp.json();
-          if (errData.disabledCaptions) {
-            setDisabledCaptionMeta(errData);
+        if (resp && resp.ok) {
+          const { transcript, language } = await resp.json();
+          if (onTranscriptReady) {
+            onTranscriptReady(transcript, { 
+              type: 'youtube', 
+              name: url,
+              url: url,
+              language: language || 'auto-detected'
+            });
             return;
           }
-          throw new Error(errData.error || 'Failed to fetch transcript. Video might not have subtitles.');
+        } else if (resp && !resp.ok) {
+          try {
+            const errData = await resp.json();
+            if (errData.disabledCaptions) {
+              setDisabledCaptionMeta(errData);
+              return;
+            }
+            if (errData.error) {
+              throw new Error(errData.error);
+            }
+          } catch (jsonErr) {
+            if (jsonErr.message && !jsonErr.message.includes('JSON')) {
+              throw jsonErr;
+            }
+          }
         }
-        
-        const { transcript, language } = await resp.json();
-        if (onTranscriptReady) {
-          onTranscriptReady(transcript, { 
-            type: 'youtube', 
-            name: url,
-            url: url,
-            language: language || 'auto-detected'
-          });
+
+        // If direct transcript was not available or blocked, fetch oEmbed metadata for 1-click fallback
+        try {
+          const oembedResp = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+          if (oembedResp.ok) {
+            const oembedData = await oembedResp.json();
+            setDisabledCaptionMeta({
+              videoTitle: oembedData.title,
+              author: oembedData.author_name,
+              disabledCaptions: true
+            });
+            return;
+          }
+        } catch (oembedErr) {
+          console.warn('oEmbed check failed:', oembedErr);
         }
+
+        throw new Error('Failed to fetch transcript. The video creator may have disabled subtitles or captions.');
       } else {
         // Mode === 'web' using TinyFish Fetch API
         const markdown = await fetchWebContent(url);
@@ -81,8 +128,8 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
         if (onTranscriptReady) onTranscriptReady(markdown, { type: 'web', name: url });
       }
     } catch (err) {
-      console.error(err);
-      setError(err.message);
+      console.error('YouTubeInput process error:', err);
+      setError(err.message || 'Failed to fetch transcript. Video might not have subtitles.');
     } finally {
       setLoading(false);
     }

@@ -66,7 +66,8 @@ export async function syncUserProfile(user) {
 
   // 1. Primary: sync via backend endpoint with Supabase service credentials (creates user in auth.users + profiles)
   try {
-    const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+    const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const serverUrl = import.meta.env.VITE_SERVER_URL || (isLocal ? 'http://localhost:3001' : '');
     const resp = await fetch(`${serverUrl}/api/sync-profile`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
