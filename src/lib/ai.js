@@ -397,14 +397,27 @@ export const processLecture = async (transcript, options = {}) => {
     return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
   };
 
+  // Helper to strip any hallucinated text timestamp like "(00:00 - 03:00)" or "[01:30]" from text
+  const stripTimePattern = (str) => {
+    if (!str || typeof str !== 'string') return str;
+    return str.replace(/\s*[\(\[]?\b\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?\b[\)\]]?/g, '').trim();
+  };
+
   // Normalize sections and handle timestamps strictly
   const rawSections = notesData.sections || summaryData.sections || [];
   const sections = Array.isArray(rawSections) ? rawSections.map((sec) => {
     let ts = sec.timestamp;
+    const heading = !hasMediaTimestamps ? stripTimePattern(sec.heading) : sec.heading;
+    const points = Array.isArray(sec.points)
+      ? (!hasMediaTimestamps ? sec.points.map(p => typeof p === 'string' ? stripTimePattern(p) : p) : sec.points)
+      : [];
+
     // Only accept genuine timestamps if media timestamps are expected
     if (hasMediaTimestamps && ts && typeof ts === 'string' && ts.includes(':')) {
       return {
         ...sec,
+        heading,
+        points,
         timestamp: ts.trim(),
         startSeconds: parseTimestampToSeconds(ts)
       };
@@ -412,6 +425,8 @@ export const processLecture = async (transcript, options = {}) => {
     // For articles, Wikipedia, documents, PDFs, or images: strictly NO synthetic timestamps
     return {
       ...sec,
+      heading,
+      points,
       timestamp: null,
       startSeconds: null
     };
@@ -436,12 +451,14 @@ export const processLecture = async (transcript, options = {}) => {
           whyImportant: note
         }))).map(item => ({
           ...item,
+          topic: !hasMediaTimestamps ? stripTimePattern(item.topic) : item.topic,
           timestamp: hasMediaTimestamps && item.timestamp && typeof item.timestamp === 'string' && item.timestamp.includes(':')
             ? item.timestamp.trim()
             : null
         })),
     warningTraps: (Array.isArray(rawIntent.warningTraps) ? rawIntent.warningTraps : []).map(trap => ({
       ...trap,
+      concept: !hasMediaTimestamps ? stripTimePattern(trap.concept) : trap.concept,
       timestamp: hasMediaTimestamps && trap.timestamp && typeof trap.timestamp === 'string' && trap.timestamp.includes(':')
         ? trap.timestamp.trim()
         : null
@@ -454,7 +471,7 @@ export const processLecture = async (transcript, options = {}) => {
     subject: summaryData.subject || "General Studies",
     summary: summaryData.summary || "Summary generated from lecture transcript.",
     teacherIntent,
-    briefNotes: summaryData.briefNotes || [],
+    briefNotes: (summaryData.briefNotes || []).map(bn => typeof bn === 'string' && !hasMediaTimestamps ? stripTimePattern(bn) : bn),
     sections: sections,
     keyTerms: normalizedTerms,
     comprehensiveGuide: notesData.comprehensiveGuide || "",

@@ -14,7 +14,7 @@ import {
   Clock
 } from 'lucide-react';
 
-const TeacherIntentRadar = ({ intentData }) => {
+const TeacherIntentRadar = ({ intentData, isMediaSource = false }) => {
   const [activeTab, setActiveTab] = useState('highYield'); // 'highYield' | 'traps' | 'lowPriority'
 
   if (!intentData) return null;
@@ -138,7 +138,7 @@ const TeacherIntentRadar = ({ intentData }) => {
                           <span className="text-xs font-mono font-black px-2 py-0.5 rounded-lg bg-[#FFCCD5] border border-black shadow-[1px_1px_0px_#000]">
                             🔥 {item.intentLevel || 'MUST-KNOW'}
                           </span>
-                          {item.timestamp && (
+                          {isMediaSource && item.timestamp && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-mono font-black px-2 py-0.5 rounded-lg bg-[#C7E9DE] border border-black text-black shadow-[1px_1px_0px_#000]">
                               <Clock className="w-2.5 h-2.5 text-black" />
                               <span>⏱️ {item.timestamp}</span>
@@ -201,7 +201,7 @@ const TeacherIntentRadar = ({ intentData }) => {
                         <span className="px-2 py-0.5 rounded-lg bg-amber-200 border border-black text-[10px] font-mono font-black uppercase text-amber-950">
                           ⚠️ PITFALL TRAP
                         </span>
-                        {trap.timestamp && (
+                        {isMediaSource && trap.timestamp && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-mono font-black px-2 py-0.5 rounded-lg bg-[#C7E9DE] border border-black text-black shadow-[1px_1px_0px_#000]">
                             <Clock className="w-2.5 h-2.5 text-black" />
                             <span>⏱️ {trap.timestamp}</span>

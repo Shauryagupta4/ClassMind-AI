@@ -30,6 +30,13 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
   const [mindMapData, setMindMapData] = useState(data?.cachedMindMap || null);
   const [loadingMindMap, setLoadingMindMap] = useState(false);
 
+  // Check if current lecture originated from real audio/video or YouTube
+  const isMediaSource = data?.sourceType === 'audio' || 
+                        data?.sourceType === 'video' || 
+                        data?.sourceType === 'media' || 
+                        data?.sourceType === 'youtube' ||
+                        Boolean(data?.sourceUrl && (data.sourceUrl.includes('youtube.com') || data.sourceUrl.includes('youtu.be')));
+
   // Normalize keyTerms to ensure they always show reliably
   const rawTerms = data?.keyTerms || data?.key_terms || data?.keyterms || data?.keywords || data?.terms || [];
   const termsList = (
@@ -204,7 +211,7 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
 
       {/* Teacher's Intent & Exam Radar (Dedicated Exam Focus Feature) */}
       {data.teacherIntent && (
-        <TeacherIntentRadar intentData={data.teacherIntent} />
+        <TeacherIntentRadar intentData={data.teacherIntent} isMediaSource={isMediaSource} />
       )}
 
       {/* Grid Layout */}
@@ -229,11 +236,11 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
                       <span className="w-6 h-6 rounded-lg bg-[#FFCCD5] border-2 border-black shadow-[2px_2px_0px_#000] flex items-center justify-center text-xs font-mono font-black shrink-0">
                         {idx + 1}
                       </span>
-                      <span>{section.heading}</span>
+                      <span>{isMediaSource ? section.heading : (section.heading?.replace(/\s*[\(\[]?\b\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?\b[\)\]]?/g, '').trim() || section.heading)}</span>
                     </h4>
                     
                     <div className="flex items-center gap-2 flex-wrap">
-                      {section.timestamp && (
+                      {isMediaSource && section.timestamp && (
                         data?.sourceUrl && (data?.sourceType === 'youtube' || data?.sourceUrl.includes('youtube.com') || data?.sourceUrl.includes('youtu.be')) ? (
                           <a
                             href={`${data.sourceUrl}${data.sourceUrl.includes('?') ? '&' : '?'}t=${section.startSeconds || 0}s`}
