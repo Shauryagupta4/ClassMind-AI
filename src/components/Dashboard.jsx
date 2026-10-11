@@ -76,7 +76,11 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
   };
 
   const handleKnowledgeGapsDetected = (gaps) => {
-    setKnowledgeGaps(gaps);
+    if (!Array.isArray(gaps)) return;
+    setKnowledgeGaps(prev => {
+      if (JSON.stringify(prev) === JSON.stringify(gaps)) return prev;
+      return gaps;
+    });
     if (onLectureUpdated) {
       onLectureUpdated({ ...data, detectedKnowledgeGaps: gaps });
     }

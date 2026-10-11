@@ -70,20 +70,29 @@ const QuizModal = ({
     }
   }, [quizData]);
 
-  // Reset or initialize when modal opens
+  // Reset or initialize cleanly when modal opens
   useEffect(() => {
     if (isOpen) {
+      setViewState('configure');
+      setCurrentIndex(0);
+      setSelectedOption(null);
+      setIsAnswered(false);
+      setScore(0);
+      setUserAnswers([]);
+      setShowSubmitConfirm(false);
+      setExpandedTopicNotes(null);
+
       if (initialTopic) {
         setScopeType('specific');
         setSelectedTopics([initialTopic]);
         setDifficulty('medium');
         setNumQuestions(3);
-        setViewState('configure');
-      } else if (topicList.length > 0 && selectedTopics.length === 0) {
-        setSelectedTopics([topicList[0]]);
+      } else if (topicList.length > 0) {
+        setSelectedTopics(prev => (prev && prev.length > 0 ? prev : [topicList[0]]));
       }
+
       // If quizData already exists and we're just opening, we can allow user to start directly or configure
-      if (quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 && !currentQuiz && !initialTopic) {
+      if (quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 && !initialTopic) {
         setCurrentQuiz(quizData);
       }
     }
@@ -178,6 +187,9 @@ const QuizModal = ({
       setIsAnswered(false);
     } else {
       setViewState('results');
+      if (onKnowledgeGapsDetected && knowledgeGaps.length > 0) {
+        onKnowledgeGapsDetected(knowledgeGaps);
+      }
     }
   };
 
@@ -284,12 +296,6 @@ const QuizModal = ({
     return gaps;
   }, [userAnswers, availableSections, lectureData]);
 
-  // Sync knowledge gaps with parent / dashboard when results are viewed
-  useEffect(() => {
-    if (viewState === 'results' && onKnowledgeGapsDetected && knowledgeGaps.length > 0) {
-      onKnowledgeGapsDetected(knowledgeGaps);
-    }
-  }, [viewState, knowledgeGaps, onKnowledgeGapsDetected]);
 
   const optionLabels = ['A', 'B', 'C', 'D'];
 
@@ -343,6 +349,9 @@ const QuizModal = ({
                     onClick={() => {
                       setShowSubmitConfirm(false);
                       setViewState('results');
+                      if (onKnowledgeGapsDetected && knowledgeGaps.length > 0) {
+                        onKnowledgeGapsDetected(knowledgeGaps);
+                      }
                     }}
                     className="flex-1 py-3 px-3 rounded-xl border-2 border-black bg-[#C7E9DE] hover:bg-[#aee0d1] text-xs font-black text-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
                   >
@@ -611,10 +620,11 @@ const QuizModal = ({
               )}
             </div>
           </div>
-        ) : viewState === 'taking' && currentQ ? (
-          /* =========================================================================
-             2. ACTIVE QUIZ TAKING VIEW
-             ========================================================================= */
+        ) : viewState === 'taking' ? (
+          currentQ ? (
+            /* =========================================================================
+               2. ACTIVE QUIZ TAKING VIEW
+               ========================================================================= */
           <div className="space-y-6">
             {/* Header info */}
             <div className="flex items-center justify-between">
@@ -720,7 +730,13 @@ const QuizModal = ({
               )}
             </div>
           </div>
-        ) : (
+          ) : (
+            <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
+              <Loader2 className="w-10 h-10 text-black animate-spin mx-auto" />
+              <p className="text-sm font-bold text-zinc-700">Loading question...</p>
+            </div>
+          )
+        ) : viewState === 'results' ? (
           /* =========================================================================
              3. QUIZ RESULTS SUMMARY & KNOWLEDGE GAP DIAGNOSTIC SCREEN
              ========================================================================= */
@@ -751,14 +767,14 @@ const QuizModal = ({
                 <div>
                   <span className="text-[10px] font-black uppercase text-zinc-500 block">Score</span>
                   <div className="text-3xl font-black text-black leading-none mt-0.5">
-                    {score} <span className="text-lg text-zinc-500 font-bold">/ {total}</span>
+                    {score} <span className="text-lg text-zinc-500 font-bold">/ {total || 0}</span>
                   </div>
                 </div>
                 <div className="h-8 w-[2px] bg-black/10" />
                 <div>
                   <span className="text-[10px] font-black uppercase text-zinc-500 block">Mastery</span>
-                  <div className={`text-2xl font-black leading-none mt-0.5 ${score === total ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {Math.round((score / total) * 100)}%
+                  <div className={`text-2xl font-black leading-none mt-0.5 ${score === total && total > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {total > 0 ? Math.round((score / total) * 100) : 0}%
                   </div>
                 </div>
               </div>
@@ -1044,7 +1060,7 @@ const QuizModal = ({
               )}
             </div>
           </div>
-        )}
+        ) : null}
       </motion.div>
     </div>
   );
