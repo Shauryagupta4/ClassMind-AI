@@ -140,9 +140,18 @@ export async function transcribeAudio(file, language = null) {
 /**
  * Worker 1: Summary, Title, Academic Subject, Key Glossary & Teacher Intent Detection (Summary API Key)
  */
-async function fetchSummaryWorker(transcript) {
+async function fetchSummaryWorker(transcript, hasMediaTimestamps = false) {
+  const timestampGuide = hasMediaTimestamps
+    ? `"timestamp": "string (e.g. '02:40' if identifiable from [MM:SS] markers in transcript)"`
+    : `"timestamp": null`;
+
+  const timestampTrapGuide = hasMediaTimestamps
+    ? `"timestamp": "string (e.g. '05:15' if identifiable from transcript markers)"`
+    : `"timestamp": null`;
+
   const prompt = `You are an elite multilingual academic professor, cognitive psychologist, and master examination strategist.
 The lecture material may be in English, Hindi (हिंदी / Devanagari), Romanized Hinglish, or any other language.
+${!hasMediaTimestamps ? 'IMPORTANT: This material is from a written textbook, article, syllabus, notes photo, or document. It does NOT have audio/video timeline markers. Set all "timestamp" fields to null. DO NOT fabricate or invent timestamps.' : ''}
 Comprehend the lecture content and deeply analyze the TEACHER'S INTENT, PEDAGOGICAL TONE, AND EMOTIONAL EMPHASIS:
 - Detect verbal emphasis cues: "this is important", "mark this 5 stars", "exam me zaroor aayega", "pay attention here", "concentrate on this formula", "students always mess this up".
 - Detect de-emphasis cues: "just for reference", "won't be asked in finals", "skip this proof", "optional reading".
@@ -162,14 +171,14 @@ Format strictly in JSON:
         "intentLevel": "MUST-KNOW | HIGH PRIORITY | FREQUENTLY TESTED",
         "verbalCues": "string (direct quote or paraphrase showing teacher's emphasis, e.g. 'Teacher stressed: Mark this 5 stars, repeated twice that this carries 5 marks in finals')",
         "whyImportant": "string (exact academic reason why teacher prioritized this for exams)",
-        "timestamp": "string (e.g. '02:40' if identifiable from [MM:SS] markers in transcript)"
+        "timestamp": ${timestampGuide}
       }
     ],
     "warningTraps": [
       {
         "concept": "string (topic or step)",
         "warning": "string (teacher's explicit warning where students lose marks or confuse concepts)",
-        "timestamp": "string (e.g. '05:15' if identifiable from transcript markers)"
+        "timestamp": ${timestampTrapGuide}
       }
     ],
     "lowPriorityTopics": [
@@ -201,13 +210,21 @@ ${transcript}`;
 /**
  * Worker 2: Structured Notes, Detailed Breakdown & In-Depth PDF Compendium (Notes & PDF Key)
  */
-async function fetchNotesWorker(transcript) {
+async function fetchNotesWorker(transcript, hasMediaTimestamps = false) {
+  const timestampInstruction = hasMediaTimestamps
+    ? 'TIMESTAMPS: For every section, extract or calculate the start and end timestamp (e.g. "01:25 - 04:30" or "00:00 - 02:45") from the transcript time markers where this section\'s topic is covered in the audio/video.'
+    : 'TIMESTAMPS: This material is from a written textbook, article, syllabus, notes photo, or document. It has NO audio/video timeline markers. Set "timestamp" to null for all sections. DO NOT fabricate or invent timestamps.';
+
+  const timestampField = hasMediaTimestamps
+    ? '"timestamp": "string (e.g. \'01:25 - 04:30\' or \'00:00 - 02:15\' indicating when this topic occurs in the audio/video)",'
+    : '"timestamp": null,';
+
   const prompt = `You are a master academic notes compiler, university professor, and exam curriculum specialist.
 The lecture material may be in English, Hindi (हिंदी / Devanagari), Romanized Hinglish, or any other language.
-The lecture material may contain audio/video timeline markers formatted like [MM:SS] or [HH:MM:SS].
+${hasMediaTimestamps ? 'The lecture material contains audio/video timeline markers formatted like [MM:SS] or [HH:MM:SS].' : ''}
 
 Understand the content completely in its original language and generate high-yield, exhaustive academic sections for both on-screen quick review and downloadable comprehensive master notes.
-TIMESTAMPS: For every section, extract or calculate the start and end timestamp (e.g. "01:25 - 04:30" or "00:00 - 02:45") from the transcript time markers where this section's topic is covered in the audio/video.
+${timestampInstruction}
 For every section, evaluate the TEACHER'S INTENT and assign an exam intent badge along with a teacher's emphasis note.
 IMPORTANT FOR DETAILED NOTES: Provide in-depth, thorough explanations in detailedContent and comprehensiveGuide so the resulting PDF reads like an authoritative textbook chapter with complete conceptual clarity.
 
@@ -216,7 +233,7 @@ Format strictly in JSON:
   "sections": [
     {
       "heading": "string (clear topic heading)",
-      "timestamp": "string (e.g. '01:25 - 04:30' or '00:00 - 02:15' indicating when this topic occurs in the audio/video)",
+      ${timestampField}
       "intentBadge": "string (one of: '🔥 MUST-KNOW EXAM TOPIC', '⚠️ COMMON EXAM TRAP', '🎯 CORE MECHANISM', '📖 FOUNDATIONAL')",
       "teacherEmphasis": "string (concise quote or highlight of teacher's attitude towards this topic, e.g. 'Teacher highlighted: Crucial for numerical problems')",
       "points": [
@@ -323,16 +340,25 @@ ${context}`;
  * - Quiz Key        -> Active Recall Quiz (pre-computed in parallel)
  * - Flashcards Key  -> Active Recall Flashcard Deck (pre-computed in parallel)
  */
-export const processLecture = async (transcript) => {
+export const processLecture = async (transcript, options = {}) => {
   // Cap input text to ~14,000 characters to stay safely within token limits
   const safeTranscript = transcript && transcript.length > 14000 
     ? transcript.slice(0, 14000) + "\n\n[Content truncated to primary sections for optimal processing]" 
     : transcript;
 
+  const sourceType = options?.sourceType || 'text';
+  // Check if transcript contains genuine timeline markers like [01:23] or [01:23:45]
+  const hasTimelineMarkers = /\[\d{1,2}:\d{2}(?::\d{2})?\]/.test(safeTranscript || '');
+  const isExplicitNonMedia = ['web', 'image', 'file', 'pdf', 'text', 'doc'].includes(sourceType);
+  const isMediaSource = sourceType === 'media' || sourceType === 'audio' || sourceType === 'video' || (sourceType === 'youtube' && hasTimelineMarkers);
+
+  // Timestamps ONLY exist if this is genuine audio/video or a media source with actual timeline markers
+  const hasMediaTimestamps = !isExplicitNonMedia && (isMediaSource || hasTimelineMarkers);
+
   // Run all 4 workers simultaneously across the distributed API keys
   const [summaryOutcome, notesOutcome, quizOutcome, flashcardsOutcome] = await Promise.allSettled([
-    fetchSummaryWorker(safeTranscript),
-    fetchNotesWorker(safeTranscript),
+    fetchSummaryWorker(safeTranscript, hasMediaTimestamps),
+    fetchNotesWorker(safeTranscript, hasMediaTimestamps),
     fetchQuizWorker(safeTranscript),
     fetchFlashcardsWorker(safeTranscript)
   ]);
@@ -371,19 +397,23 @@ export const processLecture = async (transcript) => {
     return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
   };
 
-  // Normalize sections and guarantee structured audio/video timestamps
+  // Normalize sections and handle timestamps strictly
   const rawSections = notesData.sections || summaryData.sections || [];
-  const sections = Array.isArray(rawSections) ? rawSections.map((sec, idx) => {
+  const sections = Array.isArray(rawSections) ? rawSections.map((sec) => {
     let ts = sec.timestamp;
-    if (!ts || typeof ts !== 'string' || !ts.includes(':')) {
-      const startMin = idx * 3;
-      const endMin = (idx + 1) * 3;
-      ts = `${String(startMin).padStart(2, '0')}:00 - ${String(endMin).padStart(2, '0')}:00`;
+    // Only accept genuine timestamps if media timestamps are expected
+    if (hasMediaTimestamps && ts && typeof ts === 'string' && ts.includes(':')) {
+      return {
+        ...sec,
+        timestamp: ts.trim(),
+        startSeconds: parseTimestampToSeconds(ts)
+      };
     }
+    // For articles, Wikipedia, documents, PDFs, or images: strictly NO synthetic timestamps
     return {
       ...sec,
-      timestamp: ts,
-      startSeconds: parseTimestampToSeconds(ts)
+      timestamp: null,
+      startSeconds: null
     };
   }) : [];
 
@@ -397,15 +427,25 @@ export const processLecture = async (transcript) => {
   const teacherIntent = {
     overallTone: rawIntent.overallTone || "Exam-Focused & Rigorous",
     examReadinessScore: typeof rawIntent.examReadinessScore === 'number' ? rawIntent.examReadinessScore : 88,
-    highYieldTopics: Array.isArray(rawIntent.highYieldTopics) && rawIntent.highYieldTopics.length > 0
+    highYieldTopics: (Array.isArray(rawIntent.highYieldTopics) && rawIntent.highYieldTopics.length > 0
       ? rawIntent.highYieldTopics
       : (summaryData.briefNotes || []).slice(0, 3).map((note, i) => ({
           topic: note.split(/[:\-–—]/)[0]?.trim() || `Core Topic ${i + 1}`,
           intentLevel: "MUST-KNOW",
           verbalCues: "Instructor emphasized this concept for foundational exam mastery.",
           whyImportant: note
+        }))).map(item => ({
+          ...item,
+          timestamp: hasMediaTimestamps && item.timestamp && typeof item.timestamp === 'string' && item.timestamp.includes(':')
+            ? item.timestamp.trim()
+            : null
         })),
-    warningTraps: Array.isArray(rawIntent.warningTraps) ? rawIntent.warningTraps : [],
+    warningTraps: (Array.isArray(rawIntent.warningTraps) ? rawIntent.warningTraps : []).map(trap => ({
+      ...trap,
+      timestamp: hasMediaTimestamps && trap.timestamp && typeof trap.timestamp === 'string' && trap.timestamp.includes(':')
+        ? trap.timestamp.trim()
+        : null
+    })),
     lowPriorityTopics: Array.isArray(rawIntent.lowPriorityTopics) ? rawIntent.lowPriorityTopics : []
   };
 

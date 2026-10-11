@@ -290,7 +290,10 @@ function App() {
         throw new Error("Could not extract enough readable content from the uploaded files. Please check file clarity.");
       }
 
-      const result = await processLecture(compositeContent);
+      const result = await processLecture(compositeContent, {
+        sourceType: mainType,
+        sourceName: combinedName
+      });
       const lectureId = `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       result.id = lectureId;
       result.sourceType = mainType;
@@ -321,7 +324,11 @@ function App() {
     setIsProcessingReady(false);
     setAppState('processing');
     try {
-      const result = await processLecture(transcriptText);
+      const result = await processLecture(transcriptText, {
+        sourceType: meta?.type || 'web',
+        sourceUrl: meta?.url || null,
+        sourceName: meta?.name || 'Online Source'
+      });
       const lectureId = `lec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       result.id = lectureId;
       result.sourceType = meta?.type || 'web';
