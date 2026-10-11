@@ -6,7 +6,6 @@ import YouTubeInput from './components/YouTubeInput'
 import Navbar from './components/Navbar'
 import AuthModal from './components/AuthModal'
 import SavedLecturesModal from './components/SavedLecturesModal'
-import ErrorBoundary from './components/ErrorBoundary'
 import { processLecture, transcribeAudio } from './lib/ai'
 import { extractTextFromImage } from './lib/ocr'
 import { saveLecture } from './lib/supabase'
@@ -476,17 +475,15 @@ function App() {
           />
         )}
         {appState === 'dashboard' && dashboardData && (
-          <ErrorBoundary onReset={resetToHome}>
-            <Dashboard 
-              data={dashboardData} 
-              user={user}
-              onReset={resetToHome} 
-              onLectureUpdated={(updated) => {
-                setDashboardData(updated);
-                saveLecture(updated, user);
-              }}
-            />
-          </ErrorBoundary>
+          <Dashboard 
+            data={dashboardData} 
+            user={user}
+            onReset={resetToHome} 
+            onLectureUpdated={(updated) => {
+              setDashboardData(updated);
+              saveLecture(updated, user);
+            }}
+          />
         )}
       </div>
     </div>

@@ -49,15 +49,12 @@
 - **Interactive Exploration**: Drag, pan, zoom, and collapse/expand branches in full screen.
 - **Retina Export**: 1-click export to high-resolution PNG or vector SVG.
 
-### 6. 📝 Active Recall Quiz Studio & Knowledge Gap Diagnostics
+### 6. 📝 Active Recall Quiz Studio
 - **Customizable Quiz Configuration**:
   - **Difficulty Levels**: Easy (Foundations), Medium (Academic), Hard (Tricky Exam Edge-Cases).
   - **Question Count**: 3, 5, 8, or 10 questions.
   - **Scope**: All lecture topics or targeted section-by-section chips.
-- **Knowledge Gap Detection**:
-  - Automatically correlates every missed question back to the exact lecture section heading.
-  - Generates targeted remedial notes highlighting why marks were lost.
-  - **Targeted Practice Drills**: Instant 1-click generation of 3 focused practice questions exclusively on the student's weakest topic.
+- **Mid-Quiz Submission**: Early submission with score calculations and answer reviews.
 
 ### 7. 🃏 3D Interactive Flashcards Deck
 - Smooth 3D flip card animations using Framer Motion.
@@ -71,8 +68,8 @@
 
 ### 9. 🛡️ Enterprise Security & Decoupled Architecture
 - **Firebase Auth Gateway**: Ultra-smooth 1-click Google Popup and Phone OTP authentication.
-- **Supabase PostgreSQL with RLS**: Secure cloud database storing revision vaults, user lectures, and personalized knowledge gap profiles with Row-Level Security policies.
-- **Refresh Resilience**: Retains current lecture state across `Ctrl+R` browser reloads with automatic error recovery via React `ErrorBoundary`.
+- **Supabase PostgreSQL with RLS**: Secure cloud database storing revision vaults and user lectures with Row-Level Security policies.
+- **Refresh Resilience**: Retains current lecture state across `Ctrl+R` browser reloads.
 
 ---
 
@@ -108,7 +105,7 @@
                 │ ClassMind Neo-Brutalist UI│
                 ├───────────────────────────┤
                 │ • Exam Intent Radar       │
-                │ • Knowledge Gap Remedial  │
+                │ • Teacher Warning Traps   │
                 │ • Mind Map Studio (Retina)│
                 │ • Active Recall Studio    │
                 │ • 3D Flashcard Deck       │

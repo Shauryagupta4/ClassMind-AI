@@ -16,14 +16,7 @@ import {
   Target, 
   Check, 
   Settings2,
-  Layers,
-  AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  BrainCircuit,
-  BookMarked,
-  Zap,
-  GraduationCap
+  Layers
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
@@ -33,9 +26,7 @@ const QuizModal = ({
   quizData, 
   loading, 
   lectureData, 
-  initialTopic = null,
-  onGenerateQuiz,
-  onKnowledgeGapsDetected
+  onGenerateQuiz 
 }) => {
   const { theme, styles } = useTheme();
   const currentStyles = styles[theme] || styles.pastelBrutal;
@@ -57,7 +48,6 @@ const QuizModal = ({
   const [score, setScore] = useState(0);
   const [userAnswers, setUserAnswers] = useState([]);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-  const [expandedTopicNotes, setExpandedTopicNotes] = useState(null);
 
   // Available topics extracted from lecture sections and terms
   const availableSections = Array.isArray(lectureData?.sections) ? lectureData.sections : [];
@@ -70,33 +60,18 @@ const QuizModal = ({
     }
   }, [quizData]);
 
-  // Reset or initialize cleanly when modal opens
+  // Reset or initialize when modal opens
   useEffect(() => {
     if (isOpen) {
-      setViewState('configure');
-      setCurrentIndex(0);
-      setSelectedOption(null);
-      setIsAnswered(false);
-      setScore(0);
-      setUserAnswers([]);
-      setShowSubmitConfirm(false);
-      setExpandedTopicNotes(null);
-
-      if (initialTopic) {
-        setScopeType('specific');
-        setSelectedTopics([initialTopic]);
-        setDifficulty('medium');
-        setNumQuestions(3);
-      } else if (topicList.length > 0) {
-        setSelectedTopics(prev => (prev && prev.length > 0 ? prev : [topicList[0]]));
+      if (topicList.length > 0 && selectedTopics.length === 0) {
+        setSelectedTopics([topicList[0]]);
       }
-
       // If quizData already exists and we're just opening, we can allow user to start directly or configure
-      if (quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 && !initialTopic) {
+      if (quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 && !currentQuiz) {
         setCurrentQuiz(quizData);
       }
     }
-  }, [isOpen, initialTopic]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -169,13 +144,9 @@ const QuizModal = ({
       ...prev,
       {
         questionId: currentQ.id,
-        question: currentQ.question,
-        topic: currentQ.topic || (availableSections[currentIndex % Math.max(availableSections.length, 1)]?.heading) || "Core Lecture Fundamentals",
-        options: currentQ.options || [],
         selected: index,
         correct: currentQ.correctIndex,
-        isCorrect,
-        explanation: currentQ.explanation
+        isCorrect
       }
     ]);
   };
@@ -187,9 +158,6 @@ const QuizModal = ({
       setIsAnswered(false);
     } else {
       setViewState('results');
-      if (onKnowledgeGapsDetected && knowledgeGaps.length > 0) {
-        onKnowledgeGapsDetected(knowledgeGaps);
-      }
     }
   };
 
@@ -200,102 +168,13 @@ const QuizModal = ({
     setScore(0);
     setUserAnswers([]);
     setShowSubmitConfirm(false);
-    setExpandedTopicNotes(null);
     setViewState('taking');
   };
 
   const handleConfigureNew = () => {
     setShowSubmitConfirm(false);
-    setExpandedTopicNotes(null);
     setViewState('configure');
   };
-
-  // 1-Click Targeted Practice on Detected Weak Topic
-  const handleDrillWeakTopic = async (topicName) => {
-    setDifficulty('medium');
-    setNumQuestions(3);
-    setScopeType('specific');
-    setSelectedTopics([topicName]);
-
-    const preferences = {
-      difficulty: 'medium',
-      numQuestions: 3,
-      selectedTopics: [topicName]
-    };
-
-    if (onGenerateQuiz) {
-      const generated = await onGenerateQuiz(preferences);
-      if (generated && Array.isArray(generated.questions) && generated.questions.length > 0) {
-        setCurrentQuiz(generated);
-        setCurrentIndex(0);
-        setSelectedOption(null);
-        setIsAnswered(false);
-        setScore(0);
-        setUserAnswers([]);
-        setShowSubmitConfirm(false);
-        setExpandedTopicNotes(null);
-        setViewState('taking');
-      }
-    }
-  };
-
-  // Knowledge Gap Detection Engine: Analyzes missed questions by topic
-  const knowledgeGaps = React.useMemo(() => {
-    if (!userAnswers || userAnswers.length === 0) return [];
-
-    const topicMap = {};
-
-    userAnswers.forEach((ans) => {
-      const topicName = ans.topic || "Core Lecture Fundamentals";
-      if (!topicMap[topicName]) {
-        topicMap[topicName] = {
-          topic: topicName,
-          total: 0,
-          correct: 0,
-          incorrect: 0,
-          missedQuestions: []
-        };
-      }
-      topicMap[topicName].total += 1;
-      if (ans.isCorrect) {
-        topicMap[topicName].correct += 1;
-      } else {
-        topicMap[topicName].incorrect += 1;
-        topicMap[topicName].missedQuestions.push(ans);
-      }
-    });
-
-    const gaps = Object.values(topicMap)
-      .filter(t => t.incorrect > 0)
-      .map(t => {
-        const accuracy = Math.round((t.correct / t.total) * 100);
-        const severity = accuracy === 0 ? 'critical' : accuracy < 60 ? 'moderate' : 'minor';
-        
-        // Find corresponding section in lectureData
-        const matchedSection = availableSections.find(s => 
-          s.heading?.toLowerCase().includes(t.topic.toLowerCase()) || 
-          t.topic.toLowerCase().includes(s.heading?.toLowerCase())
-        ) || availableSections[0] || null;
-
-        // Check if teacher had explicit warning trap for this topic
-        const matchedTrap = lectureData?.teacherIntent?.warningTraps?.find(trap => 
-          trap.concept?.toLowerCase().includes(t.topic.toLowerCase()) ||
-          t.topic.toLowerCase().includes(trap.concept?.toLowerCase())
-        ) || null;
-
-        return {
-          ...t,
-          accuracy,
-          severity,
-          matchedSection,
-          matchedTrap
-        };
-      })
-      .sort((a, b) => b.incorrect - a.incorrect || a.accuracy - b.accuracy);
-
-    return gaps;
-  }, [userAnswers, availableSections, lectureData]);
-
 
   const optionLabels = ['A', 'B', 'C', 'D'];
 
@@ -305,7 +184,7 @@ const QuizModal = ({
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className={`w-full max-w-3xl max-h-[92vh] overflow-y-auto relative ${currentStyles.cardClass} p-6 md:p-8 flex flex-col justify-between`}
+        className={`w-full max-w-2xl max-h-[92vh] overflow-y-auto relative ${currentStyles.cardClass} p-6 md:p-8 flex flex-col justify-between`}
       >
         {/* Early Submit Confirmation Modal Overlay */}
         <AnimatePresence>
@@ -349,9 +228,6 @@ const QuizModal = ({
                     onClick={() => {
                       setShowSubmitConfirm(false);
                       setViewState('results');
-                      if (onKnowledgeGapsDetected && knowledgeGaps.length > 0) {
-                        onKnowledgeGapsDetected(knowledgeGaps);
-                      }
                     }}
                     className="flex-1 py-3 px-3 rounded-xl border-2 border-black bg-[#C7E9DE] hover:bg-[#aee0d1] text-xs font-black text-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
                   >
@@ -620,11 +496,10 @@ const QuizModal = ({
               )}
             </div>
           </div>
-        ) : viewState === 'taking' ? (
-          currentQ ? (
-            /* =========================================================================
-               2. ACTIVE QUIZ TAKING VIEW
-               ========================================================================= */
+        ) : viewState === 'taking' && currentQ ? (
+          /* =========================================================================
+             2. ACTIVE QUIZ TAKING VIEW
+             ========================================================================= */
           <div className="space-y-6">
             {/* Header info */}
             <div className="flex items-center justify-between">
@@ -730,337 +605,54 @@ const QuizModal = ({
               )}
             </div>
           </div>
-          ) : (
-            <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
-              <Loader2 className="w-10 h-10 text-black animate-spin mx-auto" />
-              <p className="text-sm font-bold text-zinc-700">Loading question...</p>
-            </div>
-          )
-        ) : viewState === 'results' ? (
+        ) : (
           /* =========================================================================
-             3. QUIZ RESULTS SUMMARY & KNOWLEDGE GAP DIAGNOSTIC SCREEN
+             3. QUIZ RESULTS SUMMARY SCREEN
              ========================================================================= */
-          <div className="py-4 space-y-6">
-            {/* Top Header & Score Banner */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-3xl bg-[#FFF9F5] border-4 border-black shadow-[5px_5px_0px_#000]">
-              <div className="flex items-center gap-3.5 text-left">
-                <div className="w-16 h-16 rounded-2xl bg-[#FFF1C5] border-3 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center shrink-0 rotate-[-2deg]">
-                  <Trophy className="w-8 h-8 text-black" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black text-black leading-tight">
-                    Quiz Complete!
-                  </h3>
-                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                    <span className="px-2 py-0.5 rounded-lg bg-white border-2 border-black text-[11px] font-mono font-black uppercase shadow-[1px_1px_0px_#000]">
-                      {difficulty}
-                    </span>
-                    <span className="text-xs font-bold text-zinc-700">
-                      Scope: {scopeType === 'specific' ? selectedTopics.join(', ') : 'All Topics'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Score Metric */}
-              <div className="flex items-center gap-4 bg-white px-5 py-3 rounded-2xl border-3 border-black shadow-[3px_3px_0px_#000] text-center shrink-0">
-                <div>
-                  <span className="text-[10px] font-black uppercase text-zinc-500 block">Score</span>
-                  <div className="text-3xl font-black text-black leading-none mt-0.5">
-                    {score} <span className="text-lg text-zinc-500 font-bold">/ {total || 0}</span>
-                  </div>
-                </div>
-                <div className="h-8 w-[2px] bg-black/10" />
-                <div>
-                  <span className="text-[10px] font-black uppercase text-zinc-500 block">Mastery</span>
-                  <div className={`text-2xl font-black leading-none mt-0.5 ${score === total && total > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {total > 0 ? Math.round((score / total) * 100) : 0}%
-                  </div>
-                </div>
-              </div>
+          <div className="py-8 flex flex-col items-center text-center space-y-6">
+            <div className="w-20 h-20 rounded-3xl bg-[#FFF1C5] border-4 border-black shadow-[6px_6px_0px_#000] flex items-center justify-center rotate-[-3deg]">
+              <Trophy className="w-10 h-10 text-black" />
             </div>
 
-            {/* Quick Action Navigation */}
-            <div className="flex flex-wrap items-center justify-end gap-3">
+            <div>
+              <h3 className="text-3xl font-black text-black mb-1">
+                Quiz Complete!
+              </h3>
+              <p className="text-sm font-bold text-zinc-800">
+                Difficulty: <b className="uppercase">{difficulty}</b> • Scope: {scopeType === 'specific' ? selectedTopics.join(', ') : 'All Topics'}
+              </p>
+            </div>
+
+            {/* Score Stats */}
+            <div className="p-6 rounded-3xl bg-white border-4 border-black shadow-[5px_5px_0px_#000] w-full max-w-sm">
+              <span className="text-xs font-black uppercase text-zinc-600 block mb-1">Final Score</span>
+              <div className="text-5xl font-black text-black">
+                {score} <span className="text-2xl text-zinc-500 font-bold">/ {total}</span>
+              </div>
+              <p className="text-xs font-bold text-zinc-700 mt-2">
+                {Math.round((score / total) * 100)}% Active Recall Mastery
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
               <button
-                type="button"
                 onClick={handleRetakeSame}
-                className="py-2.5 px-4 rounded-xl bg-white text-black font-black text-xs uppercase border-2 border-black shadow-[2px_2px_0px_#000] hover:bg-[#FFF1C5] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center gap-1.5 cursor-pointer"
+                className="flex-1 py-3 px-4 rounded-2xl bg-white text-black font-black text-xs uppercase border-3 border-black shadow-[3px_3px_0px_#000] hover:bg-[#FFF1C5] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <RotateCcw className="w-4 h-4" />
                 <span>Retake Quiz</span>
               </button>
               <button
-                type="button"
                 onClick={handleConfigureNew}
-                className="py-2.5 px-4 rounded-xl bg-[#FFCCD5] text-black font-black text-xs uppercase border-2 border-black shadow-[2px_2px_0px_#000] hover:bg-[#ffb6c4] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center gap-1.5 cursor-pointer"
+                className="flex-1 py-3 px-4 rounded-2xl bg-[#FFCCD5] text-black font-black text-xs uppercase border-3 border-black shadow-[3px_3px_0px_#000] hover:bg-[#ffb6c4] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Settings2 className="w-3.5 h-3.5" />
-                <span>Configure New Quiz</span>
+                <Settings2 className="w-4 h-4" />
+                <span>New Custom Quiz</span>
               </button>
             </div>
-
-            {/* =========================================================================
-                KNOWLEDGE GAP DETECTION SYSTEM
-                ========================================================================= */}
-            <div className="pt-2">
-              <div className="flex items-center justify-between mb-3 border-b-3 border-black pb-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-[#E8D7F1] border-2 border-black shadow-[1.5px_1.5px_0px_#000]">
-                    <BrainCircuit className="w-4 h-4 text-black" />
-                  </div>
-                  <div>
-                    <h4 className="text-base font-black text-black flex items-center gap-2">
-                      <span>Knowledge Gap Diagnostic</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 bg-[#FFF1C5] border-2 border-black rounded-md shadow-[1px_1px_0px_#000]">
-                        AI WEAKNESS DETECTION
-                      </span>
-                    </h4>
-                  </div>
-                </div>
-                <span className="text-xs font-bold text-zinc-600">
-                  {knowledgeGaps.length === 0 ? "Zero Gaps Detected" : `${knowledgeGaps.length} Weak Area${knowledgeGaps.length > 1 ? 's' : ''} Found`}
-                </span>
-              </div>
-
-              {/* CASE 1: 100% MASTERY - NO GAPS FOUND */}
-              {knowledgeGaps.length === 0 ? (
-                <div className="p-6 rounded-2xl bg-[#C7E9DE] border-3 border-black shadow-[4px_4px_0px_#000] text-center space-y-2">
-                  <div className="w-12 h-12 rounded-xl bg-white border-2 border-black shadow-[2px_2px_0px_#000] flex items-center justify-center mx-auto text-emerald-600">
-                    <CheckCircle2 className="w-7 h-7" />
-                  </div>
-                  <h4 className="text-lg font-black text-black">
-                    Zero Knowledge Gaps Detected! 🎉
-                  </h4>
-                  <p className="text-xs font-bold text-zinc-800 max-w-md mx-auto leading-relaxed">
-                    Outstanding performance! You answered all questions correctly across tested lecture topics. No conceptual deficiencies or revision traps identified.
-                  </p>
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDifficulty('hard');
-                        setNumQuestions(5);
-                        handleStartCustomQuiz();
-                      }}
-                      className="py-2.5 px-5 rounded-xl bg-black text-white font-black text-xs uppercase tracking-wider shadow-[3px_3px_0px_#888] hover:bg-zinc-800 active:translate-x-0.5 active:translate-y-0.5 transition-all inline-flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                      <span>Challenge Exam Master (Hard Mode) →</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* CASE 2: KNOWLEDGE GAPS IDENTIFIED */
-                <div className="space-y-4">
-                  <div className="p-3.5 rounded-xl bg-[#FFF9F5] border-2 border-black text-xs font-bold text-zinc-700 flex items-start gap-2.5">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <span>
-                      Our performance analysis detected <b>{knowledgeGaps.length} conceptual topic{knowledgeGaps.length > 1 ? 's' : ''}</b> where you lost marks. Review the targeted remedial notes below and drill practice questions to eliminate these gaps before exams!
-                    </span>
-                  </div>
-
-                  <div className="space-y-3.5">
-                    {knowledgeGaps.map((gap, gIdx) => {
-                      const isExpanded = expandedTopicNotes === gap.topic;
-                      const severityConfig = {
-                        critical: {
-                          bg: 'bg-[#FFCCD5]',
-                          badge: '🚨 Critical Knowledge Gap',
-                          sub: '0% Accuracy • Immediate Revisit Required',
-                          border: 'border-rose-400'
-                        },
-                        moderate: {
-                          bg: 'bg-[#FFF1C5]',
-                          badge: '⚠️ Moderate Knowledge Gap',
-                          sub: `${gap.accuracy}% Accuracy • Concept Review Recommended`,
-                          border: 'border-amber-400'
-                        },
-                        minor: {
-                          bg: 'bg-[#E8D7F1]',
-                          badge: '📖 Minor Concept Trap',
-                          sub: `${gap.accuracy}% Accuracy • Fine-tune Nuance`,
-                          border: 'border-purple-400'
-                        }
-                      }[gap.severity] || {
-                        bg: 'bg-[#FFF1C5]',
-                        badge: '⚠️ Topic Needs Review',
-                        sub: `${gap.accuracy}% Accuracy`,
-                        border: 'border-zinc-400'
-                      };
-
-                      return (
-                        <div 
-                          key={gIdx}
-                          className="rounded-2xl border-3 border-black bg-white shadow-[4px_4px_0px_#000] overflow-hidden"
-                        >
-                          {/* Card Header & Summary */}
-                          <div className="p-4 md:p-5">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`px-2.5 py-0.5 rounded-md border-2 border-black text-[10px] font-mono font-black uppercase ${severityConfig.bg}`}>
-                                  {severityConfig.badge}
-                                </span>
-                                {gap.matchedSection?.intentBadge && (
-                                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 border border-black text-[10px] font-bold text-zinc-800">
-                                    {gap.matchedSection.intentBadge}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-[11px] font-mono font-black text-zinc-700">
-                                {gap.incorrect} of {gap.total} Missed ({gap.accuracy}% Accuracy)
-                              </span>
-                            </div>
-
-                            <h5 className="text-base md:text-lg font-black text-black leading-snug">
-                              {gap.topic}
-                            </h5>
-
-                            {/* Teacher's Warning Trap (if matched) */}
-                            {gap.matchedTrap && (
-                              <div className="mt-2.5 p-2.5 rounded-xl bg-[#FFF1C5] border-2 border-black text-xs font-bold text-zinc-900 flex items-start gap-2">
-                                <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
-                                <span>
-                                  <b>Teacher's Exam Warning:</b> {gap.matchedTrap.warning}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Action Buttons: 1. Remedial Notes Drawer | 2. Practice Drill */}
-                            <div className="mt-3.5 flex flex-col sm:flex-row gap-2.5">
-                              <button
-                                type="button"
-                                onClick={() => setExpandedTopicNotes(isExpanded ? null : gap.topic)}
-                                className="flex-1 py-2.5 px-3.5 rounded-xl border-2 border-black bg-white hover:bg-zinc-100 text-xs font-black text-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                              >
-                                <BookOpen className="w-3.5 h-3.5 text-indigo-700" />
-                                <span>{isExpanded ? "Hide Remedial Notes" : "📖 Read Remedial Notes & Explanations"}</span>
-                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleDrillWeakTopic(gap.topic)}
-                                className="flex-1 py-2.5 px-3.5 rounded-xl border-2 border-black bg-[#FFCCD5] hover:bg-[#ffb6c4] text-xs font-black text-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                                title="Generate 3 targeted practice questions on this exact topic"
-                              >
-                                <Zap className="w-3.5 h-3.5 text-black" />
-                                <span>🎯 Drill This Weak Topic (3 Practice Qs) →</span>
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* EXPANDABLE TARGETED REMEDIAL NOTES DRAWER */}
-                          <AnimatePresence>
-                            {isExpanded && (
-                              <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                className="border-t-3 border-black bg-[#FFFDF9] p-4 md:p-5 space-y-4"
-                              >
-                                {/* Remedial Header */}
-                                <div className="flex items-center justify-between pb-2 border-b-2 border-zinc-200">
-                                  <div className="flex items-center gap-2">
-                                    <BookMarked className="w-4 h-4 text-indigo-600" />
-                                    <span className="text-xs font-black uppercase text-zinc-800">
-                                      Targeted Remedial Revision Notes: {gap.topic}
-                                    </span>
-                                  </div>
-                                  {gap.matchedSection?.timestamp && (
-                                    <span className="text-[10px] font-mono font-bold text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded border border-zinc-300">
-                                      ⏱️ Lecture Marker: {gap.matchedSection.timestamp}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Core Summary Takeaways */}
-                                {gap.matchedSection?.points && gap.matchedSection.points.length > 0 && (
-                                  <div>
-                                    <h6 className="text-xs font-black uppercase text-zinc-700 mb-1.5">
-                                      Key Conceptual Principles to Remember:
-                                    </h6>
-                                    <ul className="space-y-1.5">
-                                      {gap.matchedSection.points.map((pt, pIdx) => (
-                                        <li key={pIdx} className="text-xs font-medium text-zinc-800 flex items-start gap-2">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-black shrink-0 mt-1.5" />
-                                          <span className="leading-relaxed">{pt}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-
-                                {/* Detailed Conceptual Deep Dive */}
-                                {gap.matchedSection?.detailedContent && (
-                                  <div className="p-3.5 rounded-xl bg-[#FFF9F5] border-2 border-black/40 text-xs font-medium text-zinc-800 leading-relaxed">
-                                    <h6 className="text-[11px] font-mono font-black uppercase text-zinc-700 mb-1">
-                                      Deep-Dive Conceptual Breakdown:
-                                    </h6>
-                                    <p className="whitespace-pre-line">
-                                      {gap.matchedSection.detailedContent}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* Missed Question Diagnostic: Why You Lost Marks */}
-                                {gap.missedQuestions && gap.missedQuestions.length > 0 && (
-                                  <div className="space-y-3 pt-1">
-                                    <h6 className="text-xs font-black uppercase text-zinc-700 flex items-center gap-1.5">
-                                      <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                                      <span>Missed Question Review & Explanation:</span>
-                                    </h6>
-                                    {gap.missedQuestions.map((mq, mqIdx) => (
-                                      <div 
-                                        key={mqIdx}
-                                        className="p-3 rounded-xl bg-white border-2 border-black shadow-[2px_2px_0px_#000] space-y-2 text-xs"
-                                      >
-                                        <p className="font-bold text-black leading-snug">
-                                          Q: {mq.question}
-                                        </p>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                                          <div className="p-2 rounded-lg bg-[#FFCCD5]/50 border border-rose-400 font-bold text-rose-900">
-                                            <span className="block font-black text-rose-800 text-[10px] uppercase">Your Choice:</span>
-                                            {mq.options?.[mq.selected] || `Option ${mq.selected + 1}`}
-                                          </div>
-                                          <div className="p-2 rounded-lg bg-[#C7E9DE]/60 border border-emerald-400 font-bold text-emerald-900">
-                                            <span className="block font-black text-emerald-800 text-[10px] uppercase">Correct Answer:</span>
-                                            {mq.options?.[mq.correct] || `Option ${mq.correct + 1}`}
-                                          </div>
-                                        </div>
-                                        {mq.explanation && (
-                                          <p className="text-[11px] font-bold text-zinc-700 bg-[#FFF1C5]/70 p-2 rounded-lg border border-amber-300 leading-relaxed">
-                                            💡 <b>Explanation:</b> {mq.explanation}
-                                          </p>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {/* Quick Bottom Drill Shortcut */}
-                                <div className="pt-1 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDrillWeakTopic(gap.topic)}
-                                    className="py-2 px-3.5 rounded-xl bg-[#C7E9DE] text-black font-black text-xs border-2 border-black shadow-[2px_2px_0px_#000] hover:bg-[#aee0d1] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer inline-flex items-center gap-1.5"
-                                  >
-                                    <Target className="w-3.5 h-3.5" />
-                                    <span>Drill 3 Practice Questions on "{gap.topic}" →</span>
-                                  </button>
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
-        ) : null}
+        )}
       </motion.div>
     </div>
   );
