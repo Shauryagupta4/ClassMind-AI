@@ -1,6 +1,22 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, ListChecks, Brain, Sparkles, FileText, ArrowLeft, Layers, CheckCircle2, Clock, ExternalLink, Network } from 'lucide-react';
+import { 
+  BookOpen, 
+  ListChecks, 
+  Brain, 
+  Sparkles, 
+  FileText, 
+  ArrowLeft, 
+  Layers, 
+  CheckCircle2, 
+  Clock, 
+  ExternalLink, 
+  Network,
+  AlertTriangle,
+  BrainCircuit,
+  Target,
+  Zap
+} from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { generateQuiz, generateFlashcards, generateMindMap } from '../lib/ai';
 import QuizModal from './QuizModal';
@@ -19,6 +35,10 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
   const [isQuizOpen, setIsQuizOpen] = useState(false);
   const [quizData, setQuizData] = useState(data?.cachedQuiz || null);
   const [loadingQuiz, setLoadingQuiz] = useState(false);
+  const [drillTopic, setDrillTopic] = useState(null);
+
+  // Knowledge Gap Detection State (Populated by Quiz Performance)
+  const [knowledgeGaps, setKnowledgeGaps] = useState(data?.detectedKnowledgeGaps || []);
 
   // Flashcards State
   const [isFlashcardsOpen, setIsFlashcardsOpen] = useState(false);
@@ -51,6 +71,28 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
     : (data?.sections || []).map(s => s.heading).filter(Boolean);
 
   const handleGenerateQuiz = () => {
+    setDrillTopic(null);
+    setIsQuizOpen(true);
+  };
+
+  const handleKnowledgeGapsDetected = (gaps) => {
+    setKnowledgeGaps(gaps);
+    if (onLectureUpdated) {
+      onLectureUpdated({ ...data, detectedKnowledgeGaps: gaps });
+    }
+  };
+
+  const scrollToSection = (idx) => {
+    const el = document.getElementById(`lecture-section-${idx}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-4', 'ring-rose-400');
+      setTimeout(() => el.classList.remove('ring-4', 'ring-rose-400'), 2500);
+    }
+  };
+
+  const handleDrillTopicFromDashboard = (topic) => {
+    setDrillTopic(topic);
     setIsQuizOpen(true);
   };
 
@@ -207,6 +249,102 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
         <TeacherIntentRadar intentData={data.teacherIntent} />
       )}
 
+      {/* Knowledge Gap Diagnostic Banner (Populated by Quiz Performance) */}
+      {knowledgeGaps && knowledgeGaps.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 p-6 rounded-3xl bg-white border-4 border-black shadow-[6px_6px_0px_#000] space-y-4"
+        >
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b-3 border-black pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-[#FFCCD5] border-2 border-black shadow-[2px_2px_0px_#000]">
+                <BrainCircuit className="w-5 h-5 text-black" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-black flex items-center gap-2">
+                  <span>Knowledge Gap Detection: {knowledgeGaps.length} Weak Area{knowledgeGaps.length > 1 ? 's' : ''} Identified</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 bg-[#FFF1C5] border-2 border-black rounded-lg shadow-[1px_1px_0px_#000]">
+                    QUIZ PERFORMANCE DIAGNOSTIC
+                  </span>
+                </h3>
+                <p className="text-xs font-bold text-zinc-600">
+                  Based on recent quiz results, your student profile needs remedial revision on these exact topics.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleDrillTopicFromDashboard(knowledgeGaps[0]?.topic)}
+                className="py-2 px-3.5 rounded-xl bg-[#FFCCD5] border-2 border-black text-xs font-black text-black shadow-[2px_2px_0px_#000] hover:bg-[#ffb6c4] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 text-black" />
+                <span>Drill Weak Topics Now</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setKnowledgeGaps([])}
+                className="py-2 px-2.5 rounded-xl bg-white border-2 border-black text-xs font-bold text-zinc-600 shadow-[1px_1px_0px_#000] hover:bg-zinc-100 transition-all cursor-pointer"
+                title="Dismiss banner"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Cards for each weak topic */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {knowledgeGaps.map((gap, gIdx) => {
+              const matchedIdx = data.sections?.findIndex(s => 
+                s.heading.toLowerCase().includes(gap.topic.toLowerCase()) || 
+                gap.topic.toLowerCase().includes(s.heading.toLowerCase())
+              );
+              return (
+                <div 
+                  key={gIdx} 
+                  className="p-3.5 rounded-2xl border-2 border-black bg-[#FFF9F5] shadow-[2px_2px_0px_#000] flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-black uppercase bg-[#FFCCD5] border border-black">
+                        {gap.severity === 'critical' ? '🚨 Critical Gap' : '⚠️ Revisit Needed'}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold text-zinc-600">
+                        {gap.accuracy}% Accuracy
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-black text-black leading-snug line-clamp-2">
+                      {gap.topic}
+                    </h4>
+                  </div>
+
+                  <div className="mt-3 flex gap-2">
+                    {matchedIdx !== -1 && matchedIdx !== undefined && (
+                      <button
+                        type="button"
+                        onClick={() => scrollToSection(matchedIdx)}
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-white border border-black text-[11px] font-bold text-zinc-800 hover:bg-zinc-100 shadow-[1px_1px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer text-center"
+                      >
+                        📖 Revisit Notes
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDrillTopicFromDashboard(gap.topic)}
+                      className="flex-1 py-1.5 px-2 rounded-lg bg-[#C7E9DE] border border-black text-[11px] font-black text-black hover:bg-[#b0ded2] shadow-[1px_1px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer text-center"
+                    >
+                      🎯 Drill Topic
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
+
       {/* Grid Layout */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
@@ -222,8 +360,34 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
             </div>
             
             <div className="space-y-6">
-              {data.sections?.map((section, idx) => (
-                <div key={idx} className="p-4 rounded-2xl bg-[#FFF9F5] border-2 border-black">
+              {data.sections?.map((section, idx) => {
+                const isGap = knowledgeGaps.some(g => 
+                  g.topic.toLowerCase().includes(section.heading.toLowerCase()) || 
+                  section.heading.toLowerCase().includes(g.topic.toLowerCase())
+                );
+                return (
+                <div 
+                  key={idx} 
+                  id={`lecture-section-${idx}`}
+                  className={`p-4 rounded-2xl bg-[#FFF9F5] border-2 border-black transition-all ${
+                    isGap ? 'ring-3 ring-rose-400 bg-[#FFF5F7]' : ''
+                  }`}
+                >
+                  {isGap && (
+                    <div className="mb-2 px-3 py-1.5 rounded-xl bg-[#FFCCD5] border-2 border-black text-xs font-black text-rose-900 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-800" />
+                        <span>QUIZ KNOWLEDGE GAP FLAGGED — Extra Revision & Practice Recommended</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDrillTopicFromDashboard(section.heading)}
+                        className="px-2 py-0.5 rounded-md bg-white border border-black text-[10px] font-black text-black hover:bg-zinc-100 cursor-pointer shadow-[1px_1px_0px_#000]"
+                      >
+                        Drill Practice 🎯
+                      </button>
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <h4 className="text-base font-black text-black flex items-center gap-2">
                       <span className="w-6 h-6 rounded-lg bg-[#FFCCD5] border-2 border-black shadow-[2px_2px_0px_#000] flex items-center justify-center text-xs font-mono font-black shrink-0">
@@ -283,7 +447,8 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
                     ))}
                   </ul>
                 </div>
-              ))}
+              );
+            })}
             </div>
           </div>
 
@@ -378,10 +543,15 @@ const Dashboard = ({ data, onReset, onLectureUpdated, user }) => {
       {/* Interactive Active Recall Quiz Modal with Custom Preferences Studio */}
       <QuizModal 
         isOpen={isQuizOpen}
-        onClose={() => setIsQuizOpen(false)}
+        onClose={() => {
+          setIsQuizOpen(false);
+          setDrillTopic(null);
+        }}
         quizData={quizData}
         loading={loadingQuiz}
         lectureData={data}
+        initialTopic={drillTopic}
+        onKnowledgeGapsDetected={handleKnowledgeGapsDetected}
         onGenerateQuiz={async (preferences) => {
           setLoadingQuiz(true);
           try {

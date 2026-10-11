@@ -271,6 +271,7 @@ Format strictly in JSON:
   "questions": [
     {
       "id": 1,
+      "topic": "string (exact lecture section heading or core concept tested by this question, e.g. 'Photosynthesis Light Reactions' or 'Derivation of Bernoulli Equation')",
       "question": "string (clear question matching the ${difficulty} difficulty level)",
       "options": ["string (Option A)", "string (Option B)", "string (Option C)", "string (Option D)"],
       "correctIndex": 0,
@@ -418,7 +419,13 @@ export const processLecture = async (transcript) => {
     sections: sections,
     keyTerms: normalizedTerms,
     comprehensiveGuide: notesData.comprehensiveGuide || "",
-    cachedQuiz: quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 ? quizData : null,
+    cachedQuiz: quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 ? {
+      ...quizData,
+      questions: quizData.questions.map((q, idx) => ({
+        ...q,
+        topic: q.topic || q.category || (sections[idx % Math.max(sections.length, 1)]?.heading) || "Core Concept"
+      }))
+    } : null,
     cachedFlashcards: flashcardsData && Array.isArray(flashcardsData.flashcards) && flashcardsData.flashcards.length > 0 ? flashcardsData : null,
     cachedMindMap: buildDeterministicMindMap({
       title: summaryData.title || "Lecture Notes",
@@ -448,6 +455,11 @@ export const generateQuiz = async (lectureData, preferences = null) => {
   try {
     const result = await fetchQuizWorker(context, prefs);
     if (result && Array.isArray(result.questions) && result.questions.length > 0) {
+      const sections = Array.isArray(lectureData?.sections) ? lectureData.sections : [];
+      result.questions = result.questions.map((q, idx) => ({
+        ...q,
+        topic: q.topic || q.category || (sections[idx % Math.max(sections.length, 1)]?.heading) || "Core Concept"
+      }));
       return result;
     }
     throw new Error("Invalid quiz structure returned from API");
@@ -504,9 +516,11 @@ const getFallbackQuiz = (lectureData, prefs = {}) => {
     questions: Array.from({ length: Math.min(count, 10) }, (_, idx) => {
       const term = terms[idx % terms.length];
       const section = effectiveSections[idx % effectiveSections.length];
+      const topicName = section.heading || term || "Core Concept";
       const point = section.points?.[0] || `Understanding the role and application of ${term} in ${title}.`;
       return {
         id: idx + 1,
+        topic: topicName,
         question: `[${difficulty.toUpperCase()}] In the context of ${section.heading || title}, how is "${term}" defined or applied?`,
         options: [
           point,
