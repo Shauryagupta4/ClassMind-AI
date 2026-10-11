@@ -15,6 +15,8 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [disabledCaptionMeta, setDisabledCaptionMeta] = useState(null);
+  const [manualTranscript, setManualTranscript] = useState('');
+  const [showManualPaste, setShowManualPaste] = useState(false);
 
   const checkAuth = () => {
     if (!user) {
@@ -225,7 +227,43 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
                   >
                     <span>✨ Generate Master Notes on this Topic Anyway →</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowManualPaste(!showManualPaste)}
+                    className="px-3 py-2 rounded-xl border-2 border-black bg-white hover:bg-zinc-100 text-xs font-black text-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                  >
+                    <span>{showManualPaste ? 'Hide Paste Box' : '📝 Paste Transcript Manually'}</span>
+                  </button>
                 </div>
+
+                {showManualPaste && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      rows={4}
+                      placeholder="Paste video transcript / Hindi subtitles here..."
+                      value={manualTranscript}
+                      onChange={(e) => setManualTranscript(e.target.value)}
+                      className="w-full p-2.5 text-xs font-medium bg-white rounded-xl border-2 border-black focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      disabled={!manualTranscript.trim()}
+                      onClick={() => {
+                        if (onTranscriptReady && manualTranscript.trim()) {
+                          onTranscriptReady(manualTranscript.trim(), {
+                            type: 'youtube',
+                            name: disabledCaptionMeta.videoTitle || url,
+                            url: url,
+                            language: 'hindi-or-manual'
+                          });
+                        }
+                      }}
+                      className="px-3.5 py-2 rounded-xl border-2 border-black bg-[#C7E9DE] hover:bg-[#aee0d1] text-xs font-black text-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <span>⚡ Synthesize Pasted Transcript</span>
+                    </button>
+                  </div>
+                )}
                 
                 <p className="text-[11px] font-bold text-amber-800 mt-2.5">
                   💡 Tip: If you have the lecture video or audio (.mp3), upload it to the Dropzone above — Groq Whisper will transcribe the raw sound directly!

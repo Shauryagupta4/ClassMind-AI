@@ -62,63 +62,216 @@ function formatTimestamp(seconds) {
 }
 
 /**
- * Multilingual YouTube transcript retriever with Audio/Video Timestamps
- * Attempts to retrieve transcripts across prioritized language tracks:
- * 1. User preferred language (if provided)
- * 2. Hindi (hi, hi-IN, hi-Latn)
- * 3. English (en, en-US, en-IN, en-GB)
- * 4. Any default/auto-detected track available on the video
+ * Robust YouTube Video ID extractor
  */
-async function fetchMultilingualTranscript(url, preferredLang = null) {
-  const attempts = [];
-  if (preferredLang) attempts.push(preferredLang);
-  
-  // Hindi & English variants
-  const candidates = ['hi', 'hi-IN', 'hi-Latn', 'en', 'en-US', 'en-IN', 'en-GB', null];
-  for (const c of candidates) {
-    if (!attempts.includes(c)) attempts.push(c);
-  }
+function extractYouTubeId(urlOrId) {
+  if (!urlOrId) return null;
+  const str = String(urlOrId).trim();
+  if (/^[\w-]{11}$/.test(str)) return str;
+  const match = str.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/|live\/))([\w-]{11})/i);
+  return match ? match[1] : null;
+}
 
-  let lastError = null;
-  for (const lang of attempts) {
-    try {
-      const config = lang ? { lang } : undefined;
-      const res = await YoutubeTranscript.fetchTranscript(url, config);
-      if (Array.isArray(res) && res.length > 0) {
-        // Group transcript items into timeline chunks with [MM:SS] timestamps
-        const timestampedLines = [];
-        let currentChunk = [];
-        let chunkStartTime = 0;
+/**
+ * Parses XML transcript supporting srv3 (<p t="ms">) and classic (<text start="s">)
+ */
+function parseTranscriptXml(xml, defaultLang = 'auto-detected') {
+  if (!xml) return [];
+  const results = [];
 
-        for (let i = 0; i < res.length; i++) {
-          const item = res[i];
-          const offsetSec = (item.offset || 0) / 1000;
-          if (currentChunk.length === 0) {
-            chunkStartTime = offsetSec;
-          }
-          currentChunk.push(decodeHtmlEntities(item.text));
-
-          if (offsetSec - chunkStartTime >= 35 || i === res.length - 1) {
-            timestampedLines.push(`[${formatTimestamp(chunkStartTime)}] ${currentChunk.join(' ')}`);
-            currentChunk = [];
-          }
-        }
-
-        const formattedTranscript = timestampedLines.join('\n');
-        if (formattedTranscript.length > 10) {
-          return {
-            transcript: formattedTranscript,
-            language: lang || 'auto-detected',
-            hasTimestamps: true
-          };
-        }
-      }
-    } catch (err) {
-      lastError = err;
+  const pRegex = /<p\s+t="(\d+)"(?:\s+d="(\d+)")?[^>]*>([\s\S]*?)<\/p>/g;
+  let match;
+  while ((match = pRegex.exec(xml)) !== null) {
+    const startMs = parseInt(match[1], 10);
+    const durMs = match[2] ? parseInt(match[2], 10) : 0;
+    let text = match[3];
+    text = text.replace(/<s[^>]*>([^<]*)<\/s>/g, '$1');
+    text = text.replace(/<[^>]+>/g, '');
+    text = decodeHtmlEntities(text);
+    if (text) {
+      results.push({ text, offset: startMs, duration: durMs, lang: defaultLang });
     }
   }
 
-  throw lastError || new Error('No transcripts found for this video in any supported language.');
+  if (results.length > 0) return results;
+
+  const textRegex = /<text\s+start="([\d.]+)"(?:\s+dur="([\d.]+)")?[^>]*>([\s\S]*?)<\/text>/g;
+  while ((match = textRegex.exec(xml)) !== null) {
+    const startSec = parseFloat(match[1]);
+    const durSec = match[2] ? parseFloat(match[2]) : 0;
+    const text = decodeHtmlEntities(match[3].replace(/<[^>]+>/g, ''));
+    if (text) {
+      results.push({ text, offset: Math.round(startSec * 1000), duration: Math.round(durSec * 1000), lang: defaultLang });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Format raw transcript items into timeline paragraphs with timestamps
+ */
+function formatTimelineParagraphs(items) {
+  if (!items || items.length === 0) return '';
+  const timestampedLines = [];
+  let currentChunk = [];
+  let chunkStartTime = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const offsetSec = (item.offset || 0) / 1000;
+    if (currentChunk.length === 0) {
+      chunkStartTime = offsetSec;
+    }
+    currentChunk.push(item.text);
+
+    if (offsetSec - chunkStartTime >= 35 || i === items.length - 1) {
+      timestampedLines.push(`[${formatTimestamp(chunkStartTime)}] ${currentChunk.join(' ')}`);
+      currentChunk = [];
+    }
+  }
+
+  return timestampedLines.join('\n');
+}
+
+/**
+ * Multilingual YouTube transcript retriever with Audio/Video Timestamps
+ */
+async function fetchMultilingualTranscript(urlOrId, preferredLang = null) {
+  const videoId = extractYouTubeId(urlOrId);
+  if (!videoId) {
+    throw new Error('Invalid YouTube URL or Video ID');
+  }
+
+  // Layer 1: Direct InnerTube API across Android, iOS, Web clients
+  const clients = [
+    { name: 'ANDROID', version: '20.10.38', ua: 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)' },
+    { name: 'IOS', version: '19.45.4', ua: 'com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1 like Mac OS X)' },
+    { name: 'WEB', version: '2.20240210.01.00', ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' }
+  ];
+
+  let captionTracks = null;
+
+  for (const c of clients) {
+    try {
+      const resp = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': c.ua
+        },
+        body: JSON.stringify({
+          context: { client: { clientName: c.name, clientVersion: c.version } },
+          videoId
+        })
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+      if (Array.isArray(tracks) && tracks.length > 0) {
+        captionTracks = tracks;
+        break;
+      }
+    } catch (e) {
+      // try next client
+    }
+  }
+
+  if (Array.isArray(captionTracks) && captionTracks.length > 0) {
+    let selectedTrack = captionTracks.find(t => 
+      (t.languageCode && t.languageCode.toLowerCase().startsWith('hi')) ||
+      (t.vssId && t.vssId.toLowerCase().includes('hi')) ||
+      (t.name?.runs?.[0]?.text && /hindi|हिंदी/i.test(t.name.runs[0].text)) ||
+      (t.name?.simpleText && /hindi|हिंदी/i.test(t.name.simpleText))
+    );
+
+    if (!selectedTrack) {
+      selectedTrack = captionTracks.find(t => t.languageCode && t.languageCode.startsWith('en')) || captionTracks[0];
+    }
+
+    if (selectedTrack?.baseUrl) {
+      try {
+        const xmlResp = await fetch(selectedTrack.baseUrl);
+        if (xmlResp.ok) {
+          const xml = await xmlResp.text();
+          const items = parseTranscriptXml(xml, selectedTrack.languageCode);
+          if (items.length > 0) {
+            const formatted = formatTimelineParagraphs(items);
+            if (formatted.length > 10) {
+              return {
+                transcript: formatted,
+                language: selectedTrack.languageCode || 'auto-detected',
+                hasTimestamps: true
+              };
+            }
+          }
+        }
+      } catch (xmlErr) {
+        console.warn('InnerTube XML fetch failed, trying library fallback:', xmlErr);
+      }
+    }
+  }
+
+  // Layer 2: youtube-transcript package fallback
+  try {
+    const rawItems = await YoutubeTranscript.fetchTranscript(videoId);
+    if (Array.isArray(rawItems) && rawItems.length > 0) {
+      const items = rawItems.map(item => ({
+        text: decodeHtmlEntities(item.text),
+        offset: item.offset || 0,
+        duration: item.duration || 0,
+        lang: item.lang || 'auto-detected'
+      }));
+      const formatted = formatTimelineParagraphs(items);
+      if (formatted.length > 10) {
+        return {
+          transcript: formatted,
+          language: items[0]?.lang || 'auto-detected',
+          hasTimestamps: true
+        };
+      }
+    }
+  } catch (ytErr) {
+    console.warn('youtube-transcript fallback failed:', ytErr.message);
+  }
+
+  // Layer 3: Web scraping player response fallback
+  try {
+    const pageResp = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept-Language': 'hi,en-US;q=0.9,en;q=0.8'
+      }
+    });
+    if (pageResp.ok) {
+      const html = await pageResp.text();
+      const match = html.match(/var ytInitialPlayerResponse\s*=\s*({.+?});(?:var|\s*<\/script>)/s);
+      if (match) {
+        const playerObj = JSON.parse(match[1]);
+        const tracks = playerObj?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+        if (Array.isArray(tracks) && tracks.length > 0) {
+          const track = tracks.find(t => t.languageCode?.startsWith('hi')) || tracks[0];
+          if (track?.baseUrl) {
+            const xmlResp = await fetch(track.baseUrl);
+            const xml = await xmlResp.text();
+            const items = parseTranscriptXml(xml, track.languageCode);
+            if (items.length > 0) {
+              const formatted = formatTimelineParagraphs(items);
+              return {
+                transcript: formatted,
+                language: track.languageCode || 'auto-detected',
+                hasTimestamps: true
+              };
+            }
+          }
+        }
+      }
+    }
+  } catch (pageErr) {
+    console.warn('Page scraping fallback failed:', pageErr.message);
+  }
+
+  throw new Error('No transcripts or closed captions were found for this video on YouTube.');
 }
 
 /**
