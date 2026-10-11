@@ -148,6 +148,32 @@ export async function searchAcademicResources(topic, keyTerms = []) {
  * @returns {Promise<string>} Clean extracted text.
  */
 export async function fetchWebContent(url) {
+  if (!url) return '';
+
+  // 1. Direct Wikipedia API extractor (superfast, unblocked, complete textbook articles)
+  const wikiMatch = url.match(/https?:\/\/([a-z]{2,3})(?:\.m)?\.wikipedia\.org\/wiki\/([^#?]+)/i);
+  if (wikiMatch) {
+    try {
+      const lang = wikiMatch[1];
+      const title = decodeURIComponent(wikiMatch[2].replace(/_/g, ' '));
+      const wikiEndpoint = `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&origin=*&titles=${encodeURIComponent(title)}`;
+      const wikiRes = await fetch(wikiEndpoint);
+      if (wikiRes.ok) {
+        const wikiData = await wikiRes.json();
+        const pages = wikiData.query?.pages;
+        if (pages) {
+          const pageId = Object.keys(pages)[0];
+          if (pageId !== '-1' && pages[pageId]?.extract) {
+            return `# ${title}\n\n${pages[pageId].extract}`;
+          }
+        }
+      }
+    } catch (wikiErr) {
+      console.warn("Wikipedia direct API notice, falling back to TinyFish crawler:", wikiErr);
+    }
+  }
+
+  // 2. TinyFish Autonomous Crawler for all other websites, course portals & syllabuses
   try {
     const response = await fetch('https://api.fetch.tinyfish.ai', {
       method: 'POST',
@@ -164,7 +190,8 @@ export async function fetchWebContent(url) {
 
     const data = await response.json();
     if (data.results && data.results.length > 0) {
-      return data.results[0].content || data.results[0].markdown || data.results[0].text || '';
+      const item = data.results[0];
+      return item.text || item.content || item.markdown || item.description || '';
     }
     return '';
   } catch (error) {

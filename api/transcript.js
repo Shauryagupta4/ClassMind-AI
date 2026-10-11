@@ -1,5 +1,3 @@
-import { YoutubeTranscript } from 'youtube-transcript';
-
 /**
  * Robust YouTube Video ID extractor (handles watch, shorts, live, embed, youtu.be, query params)
  */
@@ -187,30 +185,7 @@ async function fetchMultilingualTranscript(urlOrId, preferredLang = null) {
     }
   }
 
-  // Layer 2: youtube-transcript package fallback (default language)
-  try {
-    const rawItems = await YoutubeTranscript.fetchTranscript(videoId);
-    if (Array.isArray(rawItems) && rawItems.length > 0) {
-      const items = rawItems.map(item => ({
-        text: decodeHtmlEntities(item.text),
-        offset: item.offset || 0,
-        duration: item.duration || 0,
-        lang: item.lang || 'auto-detected'
-      }));
-      const formatted = formatTimelineParagraphs(items);
-      if (formatted.length > 10) {
-        return {
-          transcript: formatted,
-          language: items[0]?.lang || 'auto-detected',
-          hasTimestamps: true
-        };
-      }
-    }
-  } catch (ytErr) {
-    console.warn('youtube-transcript fallback failed:', ytErr.message);
-  }
-
-  // Layer 3: Web scraping player response fallback
+  // Layer 2: Web scraping player response fallback
   try {
     const pageResp = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
       headers: {

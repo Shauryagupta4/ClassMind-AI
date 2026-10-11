@@ -47,8 +47,23 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
     setError(null);
     setDisabledCaptionMeta(null);
 
+    const trimmedUrl = url.trim();
+    const isYouTubeUrl = /(?:youtu\.be\/|youtube\.com\/)/i.test(trimmedUrl);
+
+    // Smart auto-switching: route YouTube links to YouTube engine, and web links to web engine
+    let effectiveMode = mode;
+    if (effectiveMode === 'web' && isYouTubeUrl) {
+      effectiveMode = 'youtube';
+      setMode('youtube');
+      toast('Switched to YouTube mode for optimal lecture synthesis!', { icon: '🎥' });
+    } else if (effectiveMode === 'youtube' && !isYouTubeUrl && /^https?:\/\//i.test(trimmedUrl)) {
+      effectiveMode = 'web';
+      setMode('web');
+      toast('Switched to Web Article / Syllabus mode!', { icon: '🌐' });
+    }
+
     try {
-      if (mode === 'youtube') {
+      if (effectiveMode === 'youtube') {
         const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
         const configuredUrl = import.meta.env.VITE_SERVER_URL;
         const serverUrl = isLocal 
@@ -60,7 +75,7 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
           resp = await fetch(`${serverUrl}/api/transcript`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url }),
+            body: JSON.stringify({ url: trimmedUrl }),
           });
         } catch (fetchErr) {
           console.warn('POST transcript endpoint error, trying GET query fallback:', fetchErr);
@@ -69,7 +84,7 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
         // If POST failed or wasn't ok, try GET parameter
         if (!resp || !resp.ok) {
           try {
-            const getResp = await fetch(`${serverUrl}/api/transcript?url=${encodeURIComponent(url)}`);
+            const getResp = await fetch(`${serverUrl}/api/transcript?url=${encodeURIComponent(trimmedUrl)}`);
             if (getResp.ok) {
               resp = getResp;
             } else if (!resp) {
@@ -85,57 +100,44 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
           if (onTranscriptReady && transcript) {
             onTranscriptReady(transcript, { 
               type: 'youtube', 
-              name: url,
-              url: url,
+              name: trimmedUrl,
+              url: trimmedUrl,
               language: language || 'auto-detected'
             });
             return;
           }
-        } else if (resp && !resp.ok) {
-          try {
-            const errData = await resp.json();
-            if (errData.disabledCaptions) {
-              setDisabledCaptionMeta(errData);
-              return;
-            }
-            if (errData.error) {
-              throw new Error(errData.error);
-            }
-          } catch (jsonErr) {
-            if (jsonErr.message && !jsonErr.message.includes('JSON')) {
-              throw jsonErr;
-            }
-          }
         }
 
-        // If direct transcript was not available or blocked, fetch oEmbed metadata for 1-click fallback
+        // If YouTube cloud direct subtitle download is blocked or restricted, fetch video metadata
         try {
-          const oembedResp = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+          const oembedResp = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(trimmedUrl)}&format=json`);
           if (oembedResp.ok) {
             const oembedData = await oembedResp.json();
-            setDisabledCaptionMeta({
-              videoTitle: oembedData.title,
-              author: oembedData.author_name,
-              disabledCaptions: true
-            });
+            const videoTitle = oembedData.title || trimmedUrl;
+            toast.success(`Video identified! Synthesizing master revision notes on: "${videoTitle}"`, { duration: 4500, icon: '🎓' });
+            handleSynthesizeFromTopic(videoTitle);
             return;
           }
         } catch (oembedErr) {
           console.warn('oEmbed check failed:', oembedErr);
         }
 
-        throw new Error('Failed to fetch transcript. The video creator may have disabled subtitles or captions.');
+        // Fallback: Synthesize directly from link if title lookup was blocked
+        toast.success('Synthesizing academic revision notes from this video link...', { icon: '✨' });
+        handleSynthesizeFromTopic(trimmedUrl);
       } else {
-        // Mode === 'web' using TinyFish Fetch API
-        const markdown = await fetchWebContent(url);
-        if (!markdown || markdown.trim().length < 50) {
-          throw new Error('TinyFish fetched the page, but content was too short or empty.');
+        // Mode === 'web' using enhanced Wikipedia API & TinyFish Fetch API
+        const markdown = await fetchWebContent(trimmedUrl);
+        if (!markdown || markdown.trim().length < 40) {
+          throw new Error('Web page was empty or protected. Please try another article link or paste text.');
         }
-        if (onTranscriptReady) onTranscriptReady(markdown, { type: 'web', name: url });
+        if (onTranscriptReady) {
+          onTranscriptReady(markdown, { type: 'web', name: trimmedUrl, url: trimmedUrl });
+        }
       }
     } catch (err) {
-      console.error('YouTubeInput process error:', err);
-      setError(err.message || 'Failed to fetch transcript. Video might not have subtitles.');
+      console.error('Processing error:', err);
+      setError(err.message || 'Failed to process web resource.');
     } finally {
       setLoading(false);
     }
