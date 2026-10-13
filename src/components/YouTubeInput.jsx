@@ -97,8 +97,8 @@ REQUIRED CURRICULUM COVERAGE:
       if (effectiveMode === 'youtube') {
         const configuredUrl = import.meta.env.VITE_SERVER_URL;
         const candidateEndpoints = [
+          (configuredUrl?.startsWith('http') ? `${configuredUrl.replace(/\/$/, '')}/api/transcript` : null),
           '/api/transcript',
-          (configuredUrl?.startsWith('http') ? `${configuredUrl}/api/transcript` : null),
           'http://localhost:3001/api/transcript'
         ].filter(Boolean);
 
