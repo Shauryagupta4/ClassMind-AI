@@ -43,6 +43,14 @@ const supabaseAdmin = (supabaseUrl && supabaseSecret) ? createClient(supabaseUrl
   auth: { autoRefreshToken: false, persistSession: false }
 }) : null;
 
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    service: 'ClassMind AI Backend API',
+    endpoints: ['/api/transcript', '/api/sync-profile', '/api/health']
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', server: 'ClassMind Server' });
 });
