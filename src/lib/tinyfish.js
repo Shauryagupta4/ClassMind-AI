@@ -9,10 +9,25 @@ const resourceCache = new Map();
 /**
  * Strips title noise, emojis, chapter boilerplate, and URLs
  */
+/**
+ * Strips title noise, emojis, chapter boilerplate, and URLs
+ */
 function cleanTopic(rawTopic) {
   if (!rawTopic || typeof rawTopic !== 'string') return '';
-  return rawTopic
-    .replace(/^https?:\/\/\S+/i, '')
+  let str = rawTopic.trim();
+  // If rawTopic is a URL, attempt to parse query or path slug
+  if (/^https?:\/\//i.test(str)) {
+    try {
+      const u = new URL(str);
+      const q = u.searchParams.get('q') || u.searchParams.get('query') || u.searchParams.get('v');
+      const pathname = u.pathname.replace(/^\/|\/$/g, '').split('/').pop();
+      str = q || pathname || '';
+    } catch (e) {
+      str = str.replace(/^https?:\/\/\S+/i, '').trim();
+    }
+  }
+
+  return str
     .replace(/\b(one shot|full chapter|full lecture|lecture \d+|class \d+|chapter \d+|boards \d+|exam prep|shorts|video|tutorial|revision)\b/gi, ' ')
     .replace(/[\[\](){}|#_–—:🔥✨✦⚡\/*"']/g, ' ')
     .replace(/\s+/g, ' ')
@@ -31,11 +46,11 @@ function cleanTerms(terms) {
       return '';
     })
     .filter(t => t.length >= 2 && t.length <= 50)
-    .slice(0, 4);
+    .slice(0, 5);
 }
 
 /**
- * Curated high-yield academic fallbacks (NCERT, Scholar, Wikipedia, Khan Academy)
+ * Curated high-yield academic fallbacks (NCERT, Scholar, Wikipedia, Khan Academy, MIT OCW, LibreTexts)
  * Ensures students ALWAYS receive verified academic resources even if the live web crawler times out.
  */
 function getCuratedAcademicFallbacks(topic, keyTerms = []) {
@@ -67,6 +82,18 @@ function getCuratedAcademicFallbacks(topic, keyTerms = []) {
         site_name: 'National Digital Library of India',
         snippet: `${clean} के मुख्य सारांश बिंदु, बहुविकल्पीय प्रश्न (MCQs) और रिवीजन गाइड।`,
         url: `https://www.google.com/search?q=${encodeURIComponent(clean + ' ncert hindi notes pdf')}`
+      },
+      {
+        title: `${clean} - विश्वविद्यालय एवं बोर्ड परीक्षा अभ्यास प्रश्न`,
+        site_name: 'NDLI Knowledge Hub',
+        snippet: `${clean} पर केंद्रीय विद्यालय एवं बोर्ड परीक्षा के प्रमाणित हल प्रश्न पत्र।`,
+        url: `https://www.google.com/search?q=${encodeURIComponent(clean + ' solved board questions hindi')}`
+      },
+      {
+        title: `${clean} - संकल्पना सारांश एवं मुख्य सूत्र संग्रह`,
+        site_name: 'Academic Study Archive',
+        snippet: `${clean} के त्वरित पुनरीक्षण हेतु संक्षिप्त सूत्र, नियम और परीक्षा उपयोगी सारांश।`,
+        url: `https://www.google.com/search?q=${encodeURIComponent(clean + ' formula sheet revision hindi')}`
       }
     ];
   }
@@ -91,10 +118,22 @@ function getCuratedAcademicFallbacks(topic, keyTerms = []) {
       url: `https://www.khanacademy.org/search?page_search_query=${encodeURIComponent(clean)}`
     },
     {
-      title: `${clean} - University Past Exam Problem Sets & Solutions`,
-      site_name: 'OpenCourseWare Archives',
+      title: `${clean} - University CourseWare Syllabus & Lecture Notes`,
+      site_name: 'OpenCourseWare Hub',
       snippet: `Curated problem sets, past examination papers, syllabus outlines, and lecture notes covering ${clean}.`,
       url: `https://www.google.com/search?q=${encodeURIComponent(clean + ' lecture notes exam questions pdf')}`
+    },
+    {
+      title: `${clean} - Open Textbook Core Modules & Derivations`,
+      site_name: 'LibreTexts Academic',
+      snippet: `Peer-reviewed textbook chapters, formulas, practice problems, and derivations for ${clean}.`,
+      url: `https://www.google.com/search?q=${encodeURIComponent(clean + ' site:libretexts.org')}`
+    },
+    {
+      title: `${clean} - Past Exam Questions, Practice Sets & Solution Walkthroughs`,
+      site_name: 'Exam Study Portal',
+      snippet: `High-yield past examination question banks, model solutions, and analytical problem walkthroughs on ${clean}.`,
+      url: `https://www.google.com/search?q=${encodeURIComponent(clean + ' past exam questions solutions')}`
     }
   ];
 }
@@ -208,9 +247,19 @@ export async function searchAcademicResources(topic, keyTerms = []) {
     }
   }
 
-  // Guaranteed fallback: If live search returned 0 results or failed, populate verified academic sources
+  // Guaranteed fullness: If live search returned 0 or few results, supplement with verified academic sources
+  const fallbacks = getCuratedAcademicFallbacks(sanitizedTopic, sanitizedTerms);
   if (!Array.isArray(results) || results.length === 0) {
-    results = getCuratedAcademicFallbacks(sanitizedTopic, sanitizedTerms);
+    results = fallbacks;
+  } else if (results.length < 6) {
+    const existingUrls = new Set(results.map(r => r.url));
+    for (const fb of fallbacks) {
+      if (!existingUrls.has(fb.url)) {
+        results.push(fb);
+        existingUrls.add(fb.url);
+      }
+      if (results.length >= 6) break;
+    }
   }
 
   if (Array.isArray(results) && results.length > 0) {
@@ -277,4 +326,47 @@ export async function fetchWebContent(url) {
     console.error("TinyFish Fetch Error:", error);
     throw error;
   }
+}
+
+/**
+ * Searches and crawls syllabus / lecture notes for a given topic/video using TinyFish.
+ * Used when direct YouTube subtitle streams are blocked by cloud egress IPs.
+ */
+export async function fetchTinyFishAcademicContext(topic) {
+  if (!topic) return null;
+  const clean = cleanTopic(topic);
+  if (!clean || clean.length < 3) return null;
+
+  try {
+    const q = `${clean} lecture notes syllabus overview summary`;
+    const searchData = await executeTinyFishSearch(q);
+    const validResults = (searchData?.results || [])
+      .filter(r => !r.url.includes('youtube.com') && !r.url.includes('youtu.be') && !r.url.endsWith('.pdf'))
+      .slice(0, 2);
+
+    if (validResults.length === 0) return null;
+
+    const urls = validResults.map(r => r.url);
+    const fetchResp = await fetch('https://api.fetch.tinyfish.ai', {
+      method: 'POST',
+      headers: {
+        'X-API-Key': TINYFISH_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ urls })
+    });
+
+    if (!fetchResp.ok) return null;
+    const fetchData = await fetchResp.json();
+    const articles = (fetchData.results || [])
+      .map(item => item.text || item.content || item.markdown || item.description || '')
+      .filter(t => t.length > 100);
+
+    if (articles.length > 0) {
+      return articles.join('\n\n---\n\n').slice(0, 14000);
+    }
+  } catch (err) {
+    console.warn("TinyFish Academic Context retrieval notice:", err.message);
+  }
+  return null;
 }

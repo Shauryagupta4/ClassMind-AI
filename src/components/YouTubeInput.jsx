@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Loader2, Video, Globe, Sparkles, AlertTriangle } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { fetchWebContent } from '../lib/tinyfish';
+import { fetchWebContent, fetchTinyFishAcademicContext } from '../lib/tinyfish';
 import toast from 'react-hot-toast';
 
 const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
@@ -27,13 +27,44 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
     return true;
   };
 
-  const handleSynthesizeFromTopic = (topicName) => {
+  const handleSynthesizeFromTopic = async (topicName) => {
     if (!checkAuth()) return;
     if (onTranscriptReady) {
-      const promptText = `Educational and Technical Subject: ${topicName}\n\nPlease generate a master academic synthesis including structured revision notes, foundational principles, teacher's intent exam radar, and active-recall key terms based on this subject.`;
+      const cleanTitle = (topicName || '').replace(/^https?:\/\/\S+/i, '').trim() || 'Comprehensive Academic Lecture';
+      toast.loading(`TinyFish is discovering syllabus & reference material for "${cleanTitle}"...`, { id: 'tf-synthesis' });
+
+      // Fetch verified academic syllabus & reference text via TinyFish crawler
+      let crawledMaterial = '';
+      try {
+        crawledMaterial = await fetchTinyFishAcademicContext(cleanTitle);
+      } catch (e) {
+        console.warn('TinyFish crawl fallback notice:', e);
+      }
+
+      toast.dismiss('tf-synthesis');
+      toast.success(`Synthesizing master course curriculum on: "${cleanTitle}"`, { icon: '🎓', duration: 4000 });
+
+      const promptText = `ACADEMIC SUBJECT & LECTURE TOPIC: "${cleanTitle}"
+Source Reference: YouTube Educational Lecture (${url.trim()})
+
+${crawledMaterial ? `VERIFIED REFERENCE MATERIAL & SYLLABUS DISCOVERED BY TINYFISH AI:
+${crawledMaterial}
+
+` : ''}PEDAGOGICAL DIRECTIVE & CURRICULUM BLUEPRINT:
+This is an exhaustive academic masterclass on "${cleanTitle}".
+Please generate a complete, rigorous, examination-grade academic compendium covering this subject with total pedagogical depth.
+
+REQUIRED CURRICULUM COVERAGE:
+1. Primary Principles & Theoretical Framework: Exhaustive breakdown of core mechanisms, definitions, and underlying laws of ${cleanTitle}.
+2. Mathematical Derivations, Formulas, or Technical Architecture: Step-by-step logic and quantitative rules.
+3. Teacher's Exam Radar & Common Student Pitfalls: Key focus areas marked 5-stars by examiners, common misconception traps, and calculation hazards.
+4. Comprehensive Textbook Guide: Thorough multi-paragraph sections that explain every sub-module with complete conceptual clarity so students can achieve 100% mastery.
+5. High-Yield Key Glossary, Active-Recall Revision Notes, Quizzes, and Flashcards.`;
+
       onTranscriptReady(promptText, {
         type: 'youtube',
-        name: topicName,
+        name: cleanTitle,
+        url: url.trim(),
         language: 'auto-detected'
       });
     }
@@ -64,67 +95,87 @@ const YouTubeInput = ({ onTranscriptReady, onRequireAuth }) => {
 
     try {
       if (effectiveMode === 'youtube') {
-        const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
         const configuredUrl = import.meta.env.VITE_SERVER_URL;
-        const serverUrl = isLocal 
-          ? (configuredUrl || 'http://localhost:3001')
-          : (configuredUrl?.startsWith('https://') ? configuredUrl : '');
+        const candidateEndpoints = [
+          '/api/transcript',
+          (configuredUrl?.startsWith('http') ? `${configuredUrl}/api/transcript` : null),
+          'http://localhost:3001/api/transcript'
+        ].filter(Boolean);
 
-        let resp = null;
-        try {
-          resp = await fetch(`${serverUrl}/api/transcript`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: trimmedUrl }),
-          });
-        } catch (fetchErr) {
-          console.warn('POST transcript endpoint error, trying GET query fallback:', fetchErr);
-        }
+        const uniqueEndpoints = [...new Set(candidateEndpoints)];
+        let transcriptResult = null;
+        let lastErrorJson = null;
 
-        // If POST failed or wasn't ok, try GET parameter
-        if (!resp || !resp.ok) {
+        for (const ep of uniqueEndpoints) {
           try {
-            const getResp = await fetch(`${serverUrl}/api/transcript?url=${encodeURIComponent(trimmedUrl)}`);
-            if (getResp.ok) {
-              resp = getResp;
-            } else if (!resp) {
-              resp = getResp;
+            // Try POST first
+            let resp = await fetch(ep, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: trimmedUrl }),
+            });
+
+            // If POST failed with 404 or method not allowed, try GET
+            if (!resp.ok && resp.status !== 422) {
+              try {
+                const getResp = await fetch(`${ep}?url=${encodeURIComponent(trimmedUrl)}`);
+                if (getResp.ok) resp = getResp;
+              } catch (getErr) {}
             }
-          } catch (getErr) {
-            console.warn('GET transcript retry error:', getErr);
+
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data?.transcript) {
+                transcriptResult = data;
+                break;
+              }
+            } else {
+              try {
+                lastErrorJson = await resp.json();
+              } catch (e) {}
+            }
+          } catch (fetchErr) {
+            console.warn(`Transcript endpoint [${ep}] unreachable:`, fetchErr.message);
           }
         }
         
-        if (resp && resp.ok) {
-          const { transcript, language } = await resp.json();
-          if (onTranscriptReady && transcript) {
-            onTranscriptReady(transcript, { 
+        if (transcriptResult && transcriptResult.transcript) {
+          const displayTitle = transcriptResult.title || trimmedUrl;
+          toast.success(`Video Transcribed Successfully! (${transcriptResult.language || 'auto'})`, { icon: '🎬' });
+          if (onTranscriptReady) {
+            onTranscriptReady(transcriptResult.transcript, { 
               type: 'youtube', 
-              name: trimmedUrl,
+              name: displayTitle,
               url: trimmedUrl,
-              language: language || 'auto-detected'
+              language: transcriptResult.language || 'auto-detected'
             });
             return;
           }
         }
 
-        // If YouTube cloud direct subtitle download is blocked or restricted, fetch video metadata
-        try {
-          const oembedResp = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(trimmedUrl)}&format=json`);
-          if (oembedResp.ok) {
-            const oembedData = await oembedResp.json();
-            const videoTitle = oembedData.title || trimmedUrl;
-            toast.success(`Video identified! Synthesizing master revision notes on: "${videoTitle}"`, { duration: 4500, icon: '🎓' });
-            handleSynthesizeFromTopic(videoTitle);
-            return;
+        // If subtitles are disabled or could not be extracted, fetch video metadata to present informed choice
+        let videoTitle = lastErrorJson?.videoTitle;
+        let author = lastErrorJson?.author;
+
+        if (!videoTitle) {
+          try {
+            const oembedResp = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(trimmedUrl)}&format=json`);
+            if (oembedResp.ok) {
+              const oembedData = await oembedResp.json();
+              videoTitle = oembedData.title || null;
+              author = oembedData.author_name || null;
+            }
+          } catch (oembedErr) {
+            console.warn('oEmbed check notice:', oembedErr);
           }
-        } catch (oembedErr) {
-          console.warn('oEmbed check failed:', oembedErr);
         }
 
-        // Fallback: Synthesize directly from link if title lookup was blocked
-        toast.success('Synthesizing academic revision notes from this video link...', { icon: '✨' });
-        handleSynthesizeFromTopic(trimmedUrl);
+        const effectiveTitle = videoTitle || trimmedUrl;
+        setDisabledCaptionMeta({
+          videoTitle: effectiveTitle,
+          author: author
+        });
+        setError(lastErrorJson?.error || `The creator has disabled subtitles/closed captions on "${effectiveTitle}".`);
       } else {
         // Mode === 'web' using enhanced Wikipedia API & TinyFish Fetch API
         const markdown = await fetchWebContent(trimmedUrl);

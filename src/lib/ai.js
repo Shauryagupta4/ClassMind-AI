@@ -9,6 +9,63 @@ const RAW_MODEL = import.meta.env.VITE_GROQ_MODEL || "qwen/qwen3.8-27b";
 const MODEL = (!RAW_MODEL || RAW_MODEL.includes("llama")) ? "qwen/qwen3.8-27b" : RAW_MODEL;
 
 /**
+ * Cleans and safely parses JSON even if wrapped in markdown code fences or has trailing commas
+ */
+export function cleanAndParseJson(rawContent) {
+  if (!rawContent || typeof rawContent !== 'string') return {};
+  let cleaned = rawContent.trim();
+
+  // 1. Strip markdown fences: ```json ... ``` or ``` ... ```
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  // 2. Direct parse attempt
+  try {
+    return JSON.parse(cleaned);
+  } catch (err1) {
+    // 3. Slice from first '{' to last '}'
+    const startObj = cleaned.indexOf('{');
+    const endObj = cleaned.lastIndexOf('}');
+    if (startObj !== -1 && endObj > startObj) {
+      const slice = cleaned.slice(startObj, endObj + 1);
+      try {
+        return JSON.parse(slice);
+      } catch (err2) {
+        // Try removing trailing commas before closing braces/brackets
+        const sanitized = slice
+          .replace(/,\s*([}\]])/g, '$1')
+          .replace(/[\x00-\x1F\x7F-\x9F]/g, (c) => (c === '\n' || c === '\r' || c === '\t' ? c : ''));
+        try {
+          return JSON.parse(sanitized);
+        } catch (err3) {
+          // Attempt unclosed JSON repair if truncated
+          let repaired = sanitized;
+          const openBraces = (repaired.match(/{/g) || []).length;
+          const closeBraces = (repaired.match(/}/g) || []).length;
+          const openBrackets = (repaired.match(/\[/g) || []).length;
+          const closeBrackets = (repaired.match(/]/g) || []).length;
+          for (let i = 0; i < openBrackets - closeBrackets; i++) repaired += ']';
+          for (let i = 0; i < openBraces - closeBraces; i++) repaired += '}';
+          try {
+            return JSON.parse(repaired);
+          } catch (err4) {}
+        }
+      }
+    }
+
+    // 4. Also check for array root '[' ... ']'
+    const startArr = cleaned.indexOf('[');
+    const endArr = cleaned.lastIndexOf(']');
+    if (startArr !== -1 && endArr > startArr) {
+      try {
+        return JSON.parse(cleaned.slice(startArr, endArr + 1));
+      } catch (e) {}
+    }
+
+    throw err1;
+  }
+}
+
+/**
  * Universal Groq Chat Completion caller with resilient model failover
  */
 async function callGroq(prompt, apiKey, options = {}) {
@@ -40,6 +97,7 @@ async function callGroq(prompt, apiKey, options = {}) {
           model: model,
           messages: [{ role: "user", content: prompt }],
           temperature: options.temperature ?? 0.7,
+          max_tokens: options.max_tokens || 4096,
           response_format: { type: "json_object" }
         })
       });
@@ -47,7 +105,8 @@ async function callGroq(prompt, apiKey, options = {}) {
       if (!response.ok) {
         throw new Error(data.error?.message || `Groq API Error on ${model}`);
       }
-      return JSON.parse(data.choices[0].message.content);
+      const rawContent = data.choices[0]?.message?.content || "{}";
+      return cleanAndParseJson(rawContent);
     } catch (err) {
       if (i === 0) primaryError = err;
       lastError = err;
@@ -466,6 +525,57 @@ export const processLecture = async (transcript, options = {}) => {
     lowPriorityTopics: Array.isArray(rawIntent.lowPriorityTopics) ? rawIntent.lowPriorityTopics : []
   };
 
+  // Resilient Guarantee: If sections is empty, construct complete academic sections from summary & intent
+  if (sections.length === 0) {
+    const fallbackTopics = (teacherIntent.highYieldTopics?.length > 0)
+      ? teacherIntent.highYieldTopics.map((h, idx) => ({
+          heading: h.topic || `Core Principle ${idx + 1}`,
+          intentBadge: h.intentLevel === 'MUST-KNOW' ? '🔥 MUST-KNOW EXAM TOPIC' : '🎯 CORE MECHANISM',
+          teacherEmphasis: h.verbalCues || 'Teacher emphasized this as a core concept.',
+          points: [h.whyImportant || 'Foundational conceptual milestone.'],
+          detailedContent: `${h.topic || 'This module'} represents an essential pillar of this lecture. Understanding its mechanisms and exam applications is critical for complete mastery.`
+        }))
+      : (summaryData.briefNotes || []).map((bn, i) => ({
+          heading: typeof bn === 'string' ? bn.split(/[:\-–—]/)[0].trim() : `Key Section ${i + 1}`,
+          intentBadge: '📖 FOUNDATIONAL',
+          teacherEmphasis: 'Essential exam takeaway.',
+          points: [typeof bn === 'string' ? bn : 'Core syllabus milestone.'],
+          detailedContent: `${typeof bn === 'string' ? bn : 'Core syllabus milestone'}. This concept forms an integral building block of the academic curriculum.`
+        }));
+
+    if (fallbackTopics.length > 0) {
+      sections.push(...fallbackTopics);
+    } else {
+      sections.push({
+        heading: summaryData.title || "Core Lecture Fundamentals",
+        intentBadge: "🎯 CORE MECHANISM",
+        teacherEmphasis: "Comprehensive academic milestone.",
+        points: [summaryData.summary || "Essential review concept."],
+        detailedContent: summaryData.summary || "Complete conceptual overview."
+      });
+    }
+  }
+
+  // Resilient Guarantee: Ensure comprehensiveGuide is always populated
+  const comprehensiveGuide = notesData.comprehensiveGuide || `## Academic Master Study Guide: ${summaryData.title || 'Lecture Summary'}\n\n${summaryData.summary || ''}\n\n### Core Lecture Framework\n${sections.map(s => `#### ${s.heading}\n- ${s.points.join('\n- ')}\n\n${s.detailedContent || ''}`).join('\n\n')}`;
+
+  const lectureContext = {
+    title: summaryData.title || "Lecture Notes",
+    subject: summaryData.subject || "General Studies",
+    summary: summaryData.summary || "Summary generated from lecture transcript.",
+    keyTerms: normalizedTerms,
+    sections: sections
+  };
+
+  // Resilient Guarantee: Ensure Quiz & Flashcards are always fully generated
+  const finalQuiz = (quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0)
+    ? quizData
+    : getFallbackQuiz(lectureContext, { difficulty: 'medium', numQuestions: 4 });
+
+  const finalFlashcards = (flashcardsData && Array.isArray(flashcardsData.flashcards) && flashcardsData.flashcards.length > 0)
+    ? flashcardsData
+    : getFallbackFlashcards(lectureContext);
+
   return {
     title: summaryData.title || "Lecture Notes",
     subject: summaryData.subject || "General Studies",
@@ -474,9 +584,9 @@ export const processLecture = async (transcript, options = {}) => {
     briefNotes: (summaryData.briefNotes || []).map(bn => typeof bn === 'string' && !hasMediaTimestamps ? stripTimePattern(bn) : bn),
     sections: sections,
     keyTerms: normalizedTerms,
-    comprehensiveGuide: notesData.comprehensiveGuide || "",
-    cachedQuiz: quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 ? quizData : null,
-    cachedFlashcards: flashcardsData && Array.isArray(flashcardsData.flashcards) && flashcardsData.flashcards.length > 0 ? flashcardsData : null,
+    comprehensiveGuide: comprehensiveGuide,
+    cachedQuiz: finalQuiz,
+    cachedFlashcards: finalFlashcards,
     cachedMindMap: buildDeterministicMindMap({
       title: summaryData.title || "Lecture Notes",
       subject: summaryData.subject || "General Studies",

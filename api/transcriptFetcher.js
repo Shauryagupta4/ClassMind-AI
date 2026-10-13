@@ -190,13 +190,9 @@ export async function fetchMultilingualTranscript(urlOrId, preferredLang = null)
   // ANDROID_EMBEDDED_PLAYER and TVHTML5_SIMPLY_EMBEDDED_PLAYER bypass most bot-detection
   const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
   const clients = [
-    { name: 'ANDROID', version: '20.10.38', ua: 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)' },
-    { name: 'ANDROID_EMBEDDED_PLAYER', version: '20.10.38', ua: 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)' },
-    { name: 'IOS', version: '19.45.4', ua: 'com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1 like Mac OS X)' },
-    { name: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER', version: '2.0', ua: 'Mozilla/5.0 (SMART-TV; Linux; Tizen 5.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/5.0 TV Safari/538.1' },
-    { name: 'WEB', version: '2.20240210.01.00', ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' },
-    { name: 'MWEB', version: '2.20240210.01.00', ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1' },
-    { name: 'TVHTML5', version: '7.20240210.01.00', ua: 'Mozilla/5.0 (ChromiumStylePlatform; Linux) Cobalt/23.lts.4-gold (unlike Gecko) v8/8.8.278.14 gabi/1.0.0 TV' }
+    { name: 'ANDROID', id: '3', version: '20.10.38', ua: 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)' },
+    { name: 'WEB', id: '1', version: '2.20240210.01.00', ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' },
+    { name: 'MWEB', id: '2', version: '2.20240210.01.00', ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1' }
   ];
 
   let captionTracks = null;
@@ -211,7 +207,7 @@ export async function fetchMultilingualTranscript(urlOrId, preferredLang = null)
           headers: {
             'Content-Type': 'application/json',
             'User-Agent': c.ua,
-            'X-YouTube-Client-Name': '3',
+            'X-YouTube-Client-Name': c.id,
             'X-YouTube-Client-Version': c.version,
             'Origin': 'https://www.youtube.com',
             'Referer': `https://www.youtube.com/watch?v=${videoId}`,
