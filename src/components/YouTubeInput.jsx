@@ -97,8 +97,8 @@ REQUIRED CURRICULUM COVERAGE:
       if (effectiveMode === 'youtube') {
         const configuredUrl = import.meta.env.VITE_SERVER_URL;
         const candidateEndpoints = [
-          (configuredUrl?.startsWith('http') ? `${configuredUrl.replace(/\/$/, '')}/api/transcript` : null),
           '/api/transcript',
+          (configuredUrl?.startsWith('http') ? `${configuredUrl}/api/transcript` : null),
           'http://localhost:3001/api/transcript'
         ].filter(Boolean);
 
@@ -153,7 +153,8 @@ REQUIRED CURRICULUM COVERAGE:
           }
         }
 
-        // If subtitles are disabled or could not be extracted, fetch video metadata to present informed choice
+        // If cloud subtitle extraction failed (blocked by YouTube cloud bot filters),
+        // automatically activate TinyFish Autonomous Academic Agent to discover the lecture syllabus & materials!
         let videoTitle = lastErrorJson?.videoTitle;
         let author = lastErrorJson?.author;
 
@@ -171,11 +172,12 @@ REQUIRED CURRICULUM COVERAGE:
         }
 
         const effectiveTitle = videoTitle || trimmedUrl;
-        setDisabledCaptionMeta({
-          videoTitle: effectiveTitle,
-          author: author
-        });
-        setError(lastErrorJson?.error || `The creator has disabled subtitles/closed captions on "${effectiveTitle}".`);
+
+        // Auto-run TinyFish synthesis with visual feedback
+        toast.loading(`Cloud subtitle stream restricted. TinyFish AI is crawling course syllabus & notes for: "${effectiveTitle}"...`, { id: 'tf-auto-synthesis', duration: 4000 });
+        await handleSynthesizeFromTopic(effectiveTitle);
+        toast.dismiss('tf-auto-synthesis');
+        return;
       } else {
         // Mode === 'web' using enhanced Wikipedia API & TinyFish Fetch API
         const markdown = await fetchWebContent(trimmedUrl);
