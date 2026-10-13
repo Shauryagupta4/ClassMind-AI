@@ -157,6 +157,7 @@ app.all('/api/transcript', async (req, res) => {
       error: videoTitle 
         ? `The YouTube creator has disabled closed captions/subtitles on "${videoTitle}".`
         : 'Failed to extract transcript. Closed captions/subtitles are disabled on this video by the creator.',
+      details: error.message || String(error),
       videoTitle,
       author,
       disabledCaptions: true
